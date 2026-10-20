@@ -43,6 +43,7 @@ router.get('/', async (req, res) => {
 
   const naiveSearchMin = 12;
   const best = ranked[0];
+  res.setHeader('Cache-Control', 'public, max-age=15, stale-while-revalidate=60');
   res.json({
     destination: destination || 'downtown',
     arrival: arrival.toISOString(),

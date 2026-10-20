@@ -1,0 +1,25 @@
+{
+  "name": "Parkistics — Predictive Parking",
+  "short_name": "Parkistics",
+  "description": "Predictive parking availability anywhere on Earth. Know where and when you are most likely to find a spot.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f8fafc",
+  "theme_color": "#0f172a",
+  "orientation": "portrait-primary",
+  "categories": ["navigation", "travel", "utilities"],
+  "icons": [
+    {
+      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192' width='192' height='192'%3E%3Crect width='192' height='192' rx='42' fill='%2310b981'/%3E%3Ctext x='96' y='132' font-family='system-ui,sans-serif' font-size='110' font-weight='800' fill='white' text-anchor='middle'%3EP%3C/text%3E%3C/svg%3E",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512' width='512' height='512'%3E%3Crect width='512' height='512' rx='112' fill='%2310b981'/%3E%3Ctext x='256' y='352' font-family='system-ui,sans-serif' font-size='290' font-weight='800' fill='white' text-anchor='middle'%3EP%3C/text%3E%3C/svg%3E",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

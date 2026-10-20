@@ -4,6 +4,11 @@
 <meta charset="utf-8"/>
 <meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" name="viewport"/>
 <title>Parkistics — Predictive Parking</title>
+<link rel="manifest" href="./manifest.json"/>
+<meta name="theme-color" content="#0f172a"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+<meta name="description" content="Parkistics — Predictive parking availability worldwide. Heavily optimized for time, space, and internet with offline readiness."/>
 <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet"/>
 <link href="https://fonts.googleapis.com" rel="preconnect"/>
 <link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
@@ -519,6 +524,23 @@ button, a, input, select {
 <span class="font-label-sm text-label-sm text-on-surface-variant truncate hidden xs:block">Where &amp; when you're most likely to find a spot</span>
 </div>
 </div>
+<!-- Optimization & Availability Badges -->
+<div class="flex items-center gap-1.5 shrink-0">
+  <div id="engine-status-badge" class="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 text-[11px] font-bold shadow-xs">
+    <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" id="engine-dot"></span>
+    <span id="engine-status-text">Live API</span>
+  </div>
+  <button
+    type="button"
+    id="data-saver-btn"
+    class="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-bold transition-all cursor-pointer border border-slate-200"
+    title="Toggle Data Saver Mode"
+  >
+    <span class="material-symbols-outlined text-[14px] text-emerald-600" id="data-saver-icon">bolt</span>
+    <span id="data-saver-label">Turbo</span>
+  </button>
+</div>
+</div>
 </div>
 </header>
 
@@ -875,5 +897,14 @@ Fetching live forecast…
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="./app.js"></script>
+<script>
+  if ('serviceWorker' in navigator && (window.location.protocol === 'http:' || window.location.protocol === 'https:')) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('./sw.js').catch(err => {
+        console.warn('[PWA] ServiceWorker registration warning:', err);
+      });
+    });
+  }
+</script>
 </body>
 </html>

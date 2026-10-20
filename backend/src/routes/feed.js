@@ -21,6 +21,7 @@ router.get('/', async (req, res) => {
   try {
     const { zoneId, days, date } = req.query;
     const result = await getPastWeekParkingFeed({ zoneId, days, date });
+    res.setHeader('Cache-Control', 'public, max-age=30, stale-while-revalidate=120');
     res.json(result);
   } catch (err) {
     console.error('[API /api/feed] Error querying MongoDB feed:', err);
@@ -39,6 +40,7 @@ router.get('/', async (req, res) => {
 router.get('/stats', async (req, res) => {
   try {
     const stats = await get7DayFeedStats();
+    res.setHeader('Cache-Control', 'public, max-age=60, stale-while-revalidate=180');
     res.json({ success: true, ...stats });
   } catch (err) {
     console.error('[API /api/feed/stats] Error:', err);

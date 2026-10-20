@@ -1,0 +1,23 @@
+{
+  "name": "parkistics",
+  "version": "1.0.0",
+  "description": "Parkistics — Predictive parking availability worldwide, heavily optimized for time, space, and internet.",
+  "scripts": {
+    "start": "node backend/src/index.js",
+    "dev": "node --watch backend/src/index.js",
+    "test": "node tests/mongo-feed.test.mjs && node tests/integration.test.mjs",
+    "test:mongo": "node tests/mongo-feed.test.mjs",
+    "test:integration": "node tests/integration.test.mjs"
+  },
+  "keywords": [
+    "parking",
+    "predictive-parking",
+    "mongodb",
+    "osm",
+    "pwa",
+    "spatial-indexing",
+    "edge-ready"
+  ],
+  "author": "Desu Midhun",
+  "license": "MIT"
+}

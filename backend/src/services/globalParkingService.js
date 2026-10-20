@@ -1,7 +1,32 @@
 // Global Parking Discovery Service for Parkistics
-// Discovers real-time parking in ANY corner of the world using OpenStreetMap Nominatim/Overpass
+// Discovers real-time parking in ANY corner of the world using OpenStreetMap Nominatim
 // + intelligent contextual spatial parking synthesis fallback.
+// Heavily optimized for Time (spatial bounding-box pruning + LRU cache), Space (lean representation), and Internet (fast failover & cached queries).
 
+// In-memory LRU query cache (max 100 entries, 10 min TTL)
+const queryCache = new Map();
+const MAX_CACHE_SIZE = 100;
+const CACHE_TTL_MS = 10 * 60 * 1000;
+
+function getCached(key) {
+  const item = queryCache.get(key);
+  if (!item) return null;
+  if (Date.now() - item.cachedAt > CACHE_TTL_MS) {
+    queryCache.delete(key);
+    return null;
+  }
+  return item.data;
+}
+
+function setCache(key, data) {
+  if (queryCache.size >= MAX_CACHE_SIZE) {
+    const oldestKey = queryCache.keys().next().value;
+    queryCache.delete(oldestKey);
+  }
+  queryCache.set(key, { data, cachedAt: Date.now() });
+}
+
+// Optimized Haversine with fast bounding-box early exit
 function haversineKm(lat1, lon1, lat2, lon2) {
   const R = 6371;
   const dLat = (lat2 - lat1) * Math.PI / 180;
@@ -11,7 +36,17 @@ function haversineKm(lat1, lon1, lat2, lon2) {
     Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
     Math.sin(dLon / 2) * Math.sin(dLon / 2);
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return R * c;
+  return Math.round(R * c * 1000) / 1000; // 3 decimal places (~1 meter)
+}
+
+// Fast bounding-box check before expensive trigonometric haversine
+function isWithinRadius(lat1, lon1, lat2, lon2, radiusKm) {
+  const latDelta = radiusKm / 110.5;
+  if (Math.abs(lat2 - lat1) > latDelta) return false;
+  const cosLat = Math.cos((lat1 * Math.PI) / 180);
+  const lonDelta = radiusKm / (110.5 * Math.max(0.1, cosLat));
+  if (Math.abs(lon2 - lon1) > lonDelta) return false;
+  return haversineKm(lat1, lon1, lat2, lon2) <= radiusKm;
 }
 
 function destinationPoint(lat, lng, distanceKm, bearingDeg) {
@@ -28,14 +63,14 @@ function destinationPoint(lat, lng, distanceKm, bearingDeg) {
   const λ2 = λ1 + Math.atan2(y, x);
 
   return {
-    lat: Math.round((φ2 * 180 / Math.PI) * 10000) / 10000,
-    lng: Math.round((λ2 * 180 / Math.PI) * 10000) / 10000
+    lat: Math.round((φ2 * 180 / Math.PI) * 100000) / 100000,
+    lng: Math.round((λ2 * 180 / Math.PI) * 100000) / 100000
   };
 }
 
 const BERKELEY_CENTER = { lat: 37.8715, lng: -122.273 };
 function isNearBerkeley(lat, lng) {
-  return haversineKm(lat, lng, BERKELEY_CENTER.lat, BERKELEY_CENTER.lng) < 18;
+  return isWithinRadius(lat, lng, BERKELEY_CENTER.lat, BERKELEY_CENTER.lng, 18);
 }
 
 function formatOsmZone(item, destName) {
@@ -58,7 +93,10 @@ function formatOsmZone(item, destName) {
     id: `osm-${item.place_id || item.osm_id}`,
     name,
     kind,
-    center: { lat: parseFloat(item.lat), lng: parseFloat(item.lon) },
+    center: {
+      lat: Math.round(parseFloat(item.lat) * 100000) / 100000,
+      lng: Math.round(parseFloat(item.lon) * 100000) / 100000
+    },
     capacity,
     pricePerHour,
     walkTo: destName || 'Destination',
@@ -102,9 +140,15 @@ function generateContextualParking(lat, lng, radiusKm, destName, existingCount =
 }
 
 async function findGlobalParking(lat, lng, radiusKm = 1.0, destName = 'Destination') {
+  // Check in-memory cache first for instant sub-millisecond return
+  const cacheKey = `${lat.toFixed(3)}:${lng.toFixed(3)}:${radiusKm.toFixed(1)}`;
+  const cached = getCached(cacheKey);
+  if (cached) return cached;
+
   // 1. If near Berkeley pilot area, keep canonical seed zones
   if (isNearBerkeley(lat, lng)) {
     const { seedZones } = require('../data/seedZones');
+    setCache(cacheKey, seedZones);
     return seedZones;
   }
 
@@ -122,7 +166,7 @@ async function findGlobalParking(lat, lng, radiusKm = 1.0, destName = 'Destinati
     const url = `https://nominatim.openstreetmap.org/search?amenity=parking&format=json&limit=15&viewbox=${minLng.toFixed(4)},${maxLat.toFixed(4)},${maxLng.toFixed(4)},${minLat.toFixed(4)}&bounded=1`;
     const res = await fetch(url, {
       headers: { 'User-Agent': 'ParkisticsApp/1.0 (https://github.com/desumidhun2006/parkistics)' },
-      signal: AbortSignal.timeout(3000)
+      signal: AbortSignal.timeout(2500) // Fast 2.5s network timeout
     });
     if (res.ok) {
       const data = await res.json();
@@ -131,8 +175,7 @@ async function findGlobalParking(lat, lng, radiusKm = 1.0, destName = 'Destinati
           const itemLat = parseFloat(item.lat);
           const itemLng = parseFloat(item.lon);
           if (!isNaN(itemLat) && !isNaN(itemLng)) {
-            const dist = haversineKm(lat, lng, itemLat, itemLng);
-            if (dist <= rad * 1.2) {
+            if (isWithinRadius(lat, lng, itemLat, itemLng, rad * 1.2)) {
               osmZones.push(formatOsmZone(item, destName));
             }
           }
@@ -143,13 +186,16 @@ async function findGlobalParking(lat, lng, radiusKm = 1.0, destName = 'Destinati
     // Network timeout or offline — fallback seamlessly to contextual parking synthesis
   }
 
-  // 3. If OSM returns fewer than 6 zones, supplement with contextual parking around target coordinates
+  // 3. Supplement with contextual parking around target coordinates
   const syntheticZones = generateContextualParking(lat, lng, radiusKm, destName, osmZones.length);
-  return [...osmZones, ...syntheticZones];
+  const combined = [...osmZones, ...syntheticZones];
+  setCache(cacheKey, combined);
+  return combined;
 }
 
 module.exports = {
   haversineKm,
+  isWithinRadius,
   destinationPoint,
   isNearBerkeley,
   findGlobalParking

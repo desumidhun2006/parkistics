@@ -46,6 +46,9 @@ router.get('/', async (req, res) => {
     zones.sort((a, b) => a.distanceKm - b.distanceKm);
   }
 
+  // Cache-Control header: optimize bandwidth and internet latency
+  res.setHeader('Cache-Control', 'public, max-age=15, stale-while-revalidate=60');
+
   res.json({
     count: zones.length,
     at: now.toISOString(),
@@ -64,6 +67,8 @@ router.get('/:id/forecast', async (req, res) => {
   const ml = await mlPredict(id, arrival || new Date().toISOString());
   const local = forecastSeries(id, arrival);
   if (!local) return res.status(404).json({ error: 'unknown zone', id });
+  
+  res.setHeader('Cache-Control', 'public, max-age=60, stale-while-revalidate=300');
   if (ml && ml.series) return res.json({ ...local, series: ml.series, source: 'ml-service' });
   res.json({ ...local, source: 'local-v0-forecaster' });
 });
