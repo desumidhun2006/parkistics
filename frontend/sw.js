@@ -1,27 +1,23 @@
-// Parkistics Service Worker — Heavy Internet, Time, & Offline Optimization
-// Features: Stale-While-Revalidate asset caching, OpenStreetMap Tile Cache with LRU bounds,
-// and zero-network offline resilience.
+// Parkistics Service Worker v3 — Reliable PWA Cache
+// Caches core static assets and APIs safely without interfering with map tiles or CORS.
 
-const CACHE_STATIC = 'parkistics-static-v1';
-const CACHE_TILES = 'parkistics-tiles-v1';
-const MAX_TILES_CACHED = 150; // Strict space optimization: keep tile storage < 5MB
+const CACHE_NAME = 'parkistics-static-v3';
 
 const PRECACHE_ASSETS = [
   '/',
   '/index.html',
   '/app.js',
-  '/manifest.json',
-  'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css',
-  'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'
+  '/manifest.json'
 ];
 
 self.addEventListener('install', (event) => {
+  self.skipWaiting();
   event.waitUntil(
-    caches.open(CACHE_STATIC).then((cache) => {
+    caches.open(CACHE_NAME).then((cache) => {
       return cache.addAll(PRECACHE_ASSETS).catch((err) => {
-        console.warn('[SW] Precache asset fetch warning:', err);
+        console.warn('[SW] Precache warning:', err);
       });
-    }).then(() => self.skipWaiting())
+    })
   );
 });
 
@@ -30,7 +26,8 @@ self.addEventListener('activate', (event) => {
     caches.keys().then((keys) => {
       return Promise.all(
         keys.map((key) => {
-          if (key !== CACHE_STATIC && key !== CACHE_TILES) {
+          if (key !== CACHE_NAME) {
+            console.log('[SW] Clearing old cache:', key);
             return caches.delete(key);
           }
         })
@@ -39,57 +36,29 @@ self.addEventListener('activate', (event) => {
   );
 });
 
-// Trim cache to maximum allowed size (LRU eviction)
-async function trimCache(cacheName, maxItems) {
-  const cache = await caches.open(cacheName);
-  const keys = await cache.keys();
-  if (keys.length > maxItems) {
-    const toDelete = keys.slice(0, keys.length - maxItems);
-    await Promise.all(toDelete.map((req) => cache.delete(req)));
-  }
-}
-
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
 
-  // 1. OpenStreetMap Tile Caching (Cache-First + LRU bound)
-  if (url.hostname.includes('tile.openstreetmap.org')) {
-    event.respondWith(
-      caches.open(CACHE_TILES).then(async (cache) => {
-        const cached = await cache.match(event.request);
-        if (cached) return cached;
-
-        try {
-          const networkRes = await fetch(event.request, { mode: 'cors' });
-          if (networkRes.ok) {
-            cache.put(event.request, networkRes.clone());
-            trimCache(CACHE_TILES, MAX_TILES_CACHED);
-          }
-          return networkRes;
-        } catch (err) {
-          // If offline and tile not cached, return transparent fallback pixel
-          return new Response(
-            '<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256"><rect width="256" height="256" fill="#f1f5f9"/></svg>',
-            { headers: { 'Content-Type': 'image/svg+xml' } }
-          );
-        }
-      })
-    );
-    return;
+  // 1. NEVER intercept map tiles or external tile providers — allow browser & CDN to handle them natively
+  if (
+    url.hostname.includes('tile.openstreetmap.org') ||
+    url.hostname.includes('cartocdn.com') ||
+    url.hostname.includes('openstreetmap.org')
+  ) {
+    return; // Pass through to browser default network stack
   }
 
-  // 2. Static Assets (CSS, JS, Fonts, Images) — Stale-While-Revalidate
+  // 2. Static first-party assets (HTML, CSS, JS, manifest) — Stale-While-Revalidate
   if (
-    url.pathname.endsWith('.js') ||
-    url.pathname.endsWith('.css') ||
-    url.pathname.endsWith('.html') ||
-    url.pathname === '/' ||
-    url.hostname.includes('fonts.googleapis.com') ||
-    url.hostname.includes('fonts.gstatic.com') ||
-    url.hostname.includes('unpkg.com')
+    url.origin === self.location.origin &&
+    (url.pathname.endsWith('.js') ||
+      url.pathname.endsWith('.css') ||
+      url.pathname.endsWith('.html') ||
+      url.pathname === '/' ||
+      url.pathname.endsWith('.json'))
   ) {
     event.respondWith(
-      caches.open(CACHE_STATIC).then(async (cache) => {
+      caches.open(CACHE_NAME).then(async (cache) => {
         const cached = await cache.match(event.request);
         const networkFetch = fetch(event.request).then((networkRes) => {
           if (networkRes.ok) {
@@ -111,7 +80,7 @@ self.addEventListener('fetch', (event) => {
         const cached = await caches.match(event.request);
         if (cached) return cached;
         return new Response(
-          JSON.stringify({ error: 'offline', message: 'Network offline. Using local client intelligence.' }),
+          JSON.stringify({ error: 'offline', message: 'Offline mode active.' }),
           { headers: { 'Content-Type': 'application/json' }, status: 503 }
         );
       })
@@ -121,6 +90,6 @@ self.addEventListener('fetch', (event) => {
 
   // Default fetch
   event.respondWith(
-    caches.match(event.request).then((response) => response || fetch(event.request))
+    caches.match(event.request).then((res) => res || fetch(event.request))
   );
 });

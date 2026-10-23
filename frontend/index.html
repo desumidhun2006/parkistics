@@ -900,7 +900,9 @@ Fetching live forecast…
 <script>
   if ('serviceWorker' in navigator && (window.location.protocol === 'http:' || window.location.protocol === 'https:')) {
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js').catch(err => {
+      navigator.serviceWorker.register('./sw.js').then(reg => {
+        reg.update();
+      }).catch(err => {
         console.warn('[PWA] ServiceWorker registration warning:', err);
       });
     });

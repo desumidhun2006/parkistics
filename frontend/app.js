@@ -531,13 +531,40 @@
           document.head.appendChild(s);
         });
       }
-      map = L.map('map').setView([state.destCoords.lat, state.destCoords.lng], DEFAULT_ZOOM);
-      L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      map = L.map('map', {
+        zoomControl: true,
+        fadeAnimation: true
+      }).setView([state.destCoords.lat, state.destCoords.lng], DEFAULT_ZOOM);
+
+      // CartoDB Voyager tiles — ultra-fast, high availability, zero Brave Shield or CORS blocks
+      const voyagerLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
+        subdomains: 'abcd',
+        maxZoom: 20
+      });
+
+      // OSM backup layer in case of connection drop
+      const osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '&copy; OpenStreetMap contributors',
+        subdomains: 'abc',
         maxZoom: 19
-      }).addTo(map);
+      });
+
+      voyagerLayer.addTo(map);
+
+      voyagerLayer.on('tileerror', function() {
+        if (!map.hasLayer(osmLayer)) {
+          osmLayer.addTo(map);
+        }
+      });
+
       state.provider = 'leaflet';
       state.mapReady = true;
+
+      setTimeout(() => {
+        if (map) map.invalidateSize();
+      }, 150);
+
       if (state.userLocation) placeYouMarker(state.userLocation);
       renderDestinationRadiusOnMap();
     } catch (e) {
@@ -590,29 +617,58 @@
     } catch {}
   }
 
-  // ---------- Geolocation ----------
-  function locateMe() {
-    if (!('geolocation' in navigator)) {
-      if ($('banner-title')) $('banner-title').textContent = 'Geolocation unavailable';
-      if ($('banner-coords')) $('banner-coords').textContent = 'showing default area';
-      return;
-    }
-    if ($('banner-title')) $('banner-title').textContent = 'Locating you…';
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        const loc = { lat: pos.coords.latitude, lng: pos.coords.longitude, accuracy: pos.coords.accuracy };
-        state.userLocation = loc;
-        if ($('banner-title')) $('banner-title').innerHTML = 'Location permission active: <span class="text-secondary font-bold">You are here ✓</span>';
-        if ($('banner-coords')) $('banner-coords').textContent = `(${fmt(loc.lat)}, ${fmt(loc.lng)})`;
-        centerMap(loc.lat, loc.lng, 15);
-        placeYouMarker(loc);
-      },
-      (err) => {
-        const why = err && err.code === 1 ? 'permission denied' : 'unavailable';
-        if ($('banner-title')) $('banner-title').textContent = `Location ${why} — showing default area. Tap 📍 to retry.`;
-      },
-      { credentials: 'omit', enableHighAccuracy: true, timeout: 8000, maximumAge: 60000 }
-    );
+  // ---------- Geolocation & Auto Parking Discovery ----------
+  // Returns a Promise that resolves when geolocation succeeds or rejects on error/timeout
+  function locateMe(recenterAndSearch = true) {
+    return new Promise((resolve, reject) => {
+      if (!('geolocation' in navigator)) {
+        if ($('banner-title')) $('banner-title').textContent = 'Geolocation unavailable';
+        if ($('banner-coords')) $('banner-coords').textContent = 'showing default area';
+        return reject(new Error('no-geolocation'));
+      }
+      if ($('banner-title')) $('banner-title').textContent = 'Locating you…';
+      navigator.geolocation.getCurrentPosition(
+        async (pos) => {
+          const loc = { lat: pos.coords.latitude, lng: pos.coords.longitude, accuracy: pos.coords.accuracy };
+          state.userLocation = loc;
+          if ($('banner-title')) $('banner-title').innerHTML = 'Location permission active: <span class="text-secondary font-bold">You are here ✓</span>';
+          if ($('banner-coords')) $('banner-coords').textContent = `(${fmt(loc.lat)}, ${fmt(loc.lng)})`;
+          centerMap(loc.lat, loc.lng, 15);
+          placeYouMarker(loc);
+
+          if (recenterAndSearch) {
+            state.destCoords = { lat: loc.lat, lng: loc.lng };
+            const defaultLocName = `My Location (${fmt(loc.lat)}, ${fmt(loc.lng)})`;
+            state.destination = defaultLocName;
+            if ($('dest-search-input')) $('dest-search-input').value = defaultLocName;
+
+            // Discover parking around user's actual location (instant edge + background live)
+            await fetchZones();
+            renderDestinationRadiusOnMap();
+            await refreshForecastBoard();
+            await refreshReco();
+
+            // Resolve geocoded name in background — does NOT block UI
+            fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${loc.lat}&lon=${loc.lng}&zoom=14`, {
+              signal: AbortSignal.timeout(2000)
+            }).then(rev => rev.ok ? rev.json() : null).then(data => {
+              if (!data) return;
+              const friendly = (data.address && (data.address.suburb || data.address.neighbourhood || data.address.city || data.address.town || data.address.county)) || data.name || defaultLocName;
+              state.destination = friendly;
+              if ($('dest-search-input')) $('dest-search-input').value = friendly;
+              if ($('zones-radius-badge')) $('zones-radius-badge').textContent = `within ${state.searchRadiusKm.toFixed(1)} km of ${shortName(friendly)}`;
+            }).catch(() => {});
+          }
+          resolve();
+        },
+        (err) => {
+          const why = err && err.code === 1 ? 'permission denied' : 'unavailable';
+          if ($('banner-title')) $('banner-title').textContent = `Location ${why} — showing default area. Tap 📍 to retry.`;
+          reject(err);
+        },
+        { enableHighAccuracy: true, timeout: 8000, maximumAge: 60000 }
+      );
+    });
   }
 
   // ---------- Forecast Board Rendering ----------
@@ -815,6 +871,42 @@
   }
 
   // ---------- Fetch Zones (Live or Edge) ----------
+  // Render edge-generated zones from seed or contextual generator — zero network latency
+  function applyEdgeZones() {
+    state.engineMode = 'edge';
+    state.apiOk = true;
+    showApiError(false);
+
+    const isBerkeley = isWithinRadius(state.destCoords.lat, state.destCoords.lng, 37.8715, -122.273, 18);
+    const raw = isBerkeley ? SEED_ZONES : clientGenerateContextualParking(
+      state.destCoords.lat, state.destCoords.lng, state.searchRadiusKm, state.destination
+    );
+
+    state.zones = raw.map(z => {
+      const prob = clientBaseProbability(z, new Date());
+      const d = haversineKm(state.destCoords.lat, state.destCoords.lng, z.center.lat, z.center.lng);
+      return {
+        id: z.id, name: z.name, kind: z.kind, center: z.center,
+        capacity: z.capacity, pricePerHour: z.pricePerHour,
+        walkTo: z.walkTo, peakHours: z.peakHours, poiTags: z.poiTags,
+        source: z.source || 'edge-pilot',
+        availableSpots: Math.max(0, Math.round(z.capacity * prob)),
+        distanceKm: Math.round(d * 100) / 100,
+        distanceMeters: Math.round(d * 1000),
+        walkMinutes: Math.max(1, Math.round(d * 12)),
+        current: { probability: Math.round(prob * 100) / 100, confidence: 0.85, status: statusOf(prob) }
+      };
+    });
+  }
+
+  // Promote zones from a live API response into state
+  function applyLiveZones(data) {
+    state.zones = data.zones;
+    state.apiOk = true;
+    state.engineMode = 'live';
+    showApiError(false);
+  }
+
   async function fetchZones() {
     let url = '/api/zones';
     if (state.destCoords && state.destCoords.lat && state.destCoords.lng) {
@@ -827,50 +919,27 @@
       url = `/api/zones?${p.toString()}`;
     }
 
-    try {
-      const data = await api(url);
-      state.zones = data.zones;
-      state.apiOk = true;
-      state.engineMode = 'live';
-      showApiError(false);
-    } catch (e) {
-      // Automatic Edge Intelligence Fallback: Never leave user stranded!
-      state.engineMode = 'edge';
-      state.apiOk = true;
-      showApiError(false);
-
-      const isBerkeley = isWithinRadius(state.destCoords.lat, state.destCoords.lng, 37.8715, -122.273, 18);
-      let raw = isBerkeley ? SEED_ZONES : clientGenerateContextualParking(state.destCoords.lat, state.destCoords.lng, state.searchRadiusKm, state.destination);
-
-      state.zones = raw.map(z => {
-        const prob = clientBaseProbability(z, new Date());
-        const d = haversineKm(state.destCoords.lat, state.destCoords.lng, z.center.lat, z.center.lng);
-        return {
-          id: z.id,
-          name: z.name,
-          kind: z.kind,
-          center: z.center,
-          capacity: z.capacity,
-          pricePerHour: z.pricePerHour,
-          walkTo: z.walkTo,
-          peakHours: z.peakHours,
-          poiTags: z.poiTags,
-          source: z.source || 'edge-pilot',
-          availableSpots: Math.max(0, Math.round(z.capacity * prob)),
-          distanceKm: Math.round(d * 100) / 100,
-          distanceMeters: Math.round(d * 1000),
-          walkMinutes: Math.max(1, Math.round(d * 12)),
-          current: {
-            probability: Math.round(prob * 100) / 100,
-            confidence: 0.85,
-            status: statusOf(prob)
-          }
-        };
-      });
-    }
-
+    // INSTANT FIRST PAINT: Render edge zones immediately — user sees data in <100ms
+    applyEdgeZones();
     updateHeaderBadges();
+    _syncZoneSelect();
 
+    // Background live upgrade: silently fetch live API and refresh if successful
+    // No await — this happens in parallel so the UI is never blocked
+    api(url).then(data => {
+      if (data && Array.isArray(data.zones) && data.zones.length > 0) {
+        applyLiveZones(data);
+        updateHeaderBadges();
+        _syncZoneSelect();
+        // Quietly refresh forecast and recommendation boards with live data
+        Promise.all([refreshForecastBoard(), refreshReco(), renderDestinationRadiusOnMap()]).catch(() => {});
+      }
+    }).catch(() => {
+      // Edge data is already showing — nothing extra needed
+    });
+  }
+
+  function _syncZoneSelect() {
     const sel = $('report-zone-select');
     if (sel) {
       sel.innerHTML = '';
@@ -884,30 +953,32 @@
 
   async function boot() {
     showApiError(false);
-    await fetchZones();
-    await fetchMongoFeed();
+    fetchZones();           // Instant — edge renders first, live upgrades async (no await needed)
+    fetchMongoFeed();       // Instant — edge feed renders immediately (no await needed)
     renderDestinationRadiusOnMap();
     await refreshForecastBoard();
     await refreshReco();
   }
 
   // ---------- MongoDB 7-Day Rolling Feed (Live or Edge) ----------
-  async function fetchMongoFeed() {
-    try {
-      const data = await api('/api/feed?days=7');
-      state.mongoFeed = data;
-      if (!state.selectedFeedDate && data.dailySummaries && data.dailySummaries.length > 0) {
-        state.selectedFeedDate = data.dailySummaries[0].date;
-      }
-      renderMongoFeed();
-    } catch (e) {
-      // Client Edge feed fallback
-      state.mongoFeed = clientGenerate7DayFeed();
-      if (!state.selectedFeedDate && state.mongoFeed.dailySummaries.length > 0) {
-        state.selectedFeedDate = state.mongoFeed.dailySummaries[0].date;
-      }
-      renderMongoFeed();
+  function fetchMongoFeed() {
+    // INSTANT FIRST PAINT: Render client-generated edge feed immediately
+    state.mongoFeed = clientGenerate7DayFeed();
+    if (!state.selectedFeedDate && state.mongoFeed.dailySummaries.length > 0) {
+      state.selectedFeedDate = state.mongoFeed.dailySummaries[0].date;
     }
+    renderMongoFeed();
+
+    // Background live upgrade: silently fetch MongoDB feed and refresh if successful
+    api('/api/feed?days=7').then(data => {
+      if (data && data.dailySummaries && data.dailySummaries.length > 0) {
+        state.mongoFeed = data;
+        if (!state.selectedFeedDate) state.selectedFeedDate = data.dailySummaries[0].date;
+        renderMongoFeed();
+      }
+    }).catch(() => {
+      // Edge feed already showing — nothing extra needed
+    });
   }
 
   async function syncMongoFeed() {
@@ -1151,7 +1222,7 @@
     });
   });
 
-  $('recenter-gps-btn')?.addEventListener('click', locateMe);
+  $('recenter-gps-btn')?.addEventListener('click', () => locateMe(true));
 
   $('dest-search-btn')?.addEventListener('click', () => searchDestination());
   $('dest-search-input')?.addEventListener('keydown', (e) => {
@@ -1254,6 +1325,10 @@
   updateHeaderBadges();
   showView('view-forecast');
   initLeaflet();
+  // 1. Boot IMMEDIATELY with edge zones (no network wait) so user sees data in <100ms
   boot();
-  locateMe();
+  // 2. Geolocation runs async — when it resolves, re-centers map and refreshes zones for actual location
+  locateMe(true).catch(() => {
+    // Geolocation denied/unavailable — boot() already showed default area data, nothing else needed
+  });
 })();
