@@ -281,7 +281,7 @@ main {
 }
 
 /* ================================================================
-   MAP — Natural Crisp OpenStreetMap in Light Mode
+   MAP — Google Maps (with key) or crisp OpenStreetMap via Leaflet
    ================================================================ */
 #map {
   border: 1px solid rgba(203, 213, 225, 0.85) !important;
@@ -290,6 +290,9 @@ main {
 .leaflet-tile {
   filter: none !important;
 }
+#map gmp-advanced-marker { cursor: pointer; }
+#map .gm-style-iw-c { border-radius: 12px; font-family: Inter, sans-serif; }
+#map .gm-style > div { background: #e2e8f0; }
 
 /* Map buttons */
 #recenter-gps-btn {

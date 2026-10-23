@@ -32,7 +32,7 @@ async function runTests() {
   const swRes = await fetch(`${BACKEND_URL}/sw.js`);
   assert.strictEqual(swRes.status, 200, 'sw.js must be accessible');
   const swCode = await swRes.text();
-  assert.ok(swCode.includes('parkistics-tiles-v1'), 'Service Worker must manage tile caching');
+  assert.ok(swCode.includes('parkistics-static-'), 'Service Worker must manage static asset caching');
   console.log('✓ 3. PWA assets (manifest.json, sw.js with tile caching) verified');
 
   // 4. HTTP Compression & Caching Headers (Internet & Time optimization)
@@ -58,7 +58,7 @@ async function runTests() {
   const parisData = await parisRes.json();
   assert.ok(parisData.count > 0, 'Global parking discovery must discover parking for Paris');
   assert.ok(parisData.zones.length > 0);
-  assert.ok(parisData.zones.every(z => ['osm', 'synthesized', 'seed'].includes(z.source)));
+  assert.ok(parisData.zones.every(z => ['google', 'osm', 'synthesized', 'seed'].includes(z.source)));
   console.log(`✓ 6. Global parking discovery verified for Paris (${parisData.count} facilities found)`);
 
   // 7. Forecast Horizon Series (Time optimization)

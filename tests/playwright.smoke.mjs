@@ -44,10 +44,16 @@ try {
   const rt = await (await fetch(`http://localhost:${BACKEND_PORT}/api/route?destination=Mall&lat=37.8702&lng=-122.2681&radius=1.0&time=${encodeURIComponent(new Date().toISOString())}`)).json();
   check('GET /route ranked + saved time', rt.ranked && rt.ranked.length > 0 && typeof rt.searchTimeSavedMin === 'number');
 
-  // Global parking discovery test (Paris — Eiffel Tower)
+  // Google Maps config + geocode endpoints
+  const cfg = await (await fetch(`http://localhost:${BACKEND_PORT}/api/config`)).json();
+  check('GET /config returns gmapsKey + parkingDataset', 'gmapsKey' in cfg && (cfg.parkingDataset === 'google-places' || cfg.parkingDataset === 'openstreetmap'), `dataset=${cfg.parkingDataset}, key=${cfg.gmapsKey ? 'set' : 'null'}`);
+  const gc = await (await fetch(`http://localhost:${BACKEND_PORT}/api/geocode?q=Eiffel%20Tower%2C%20Paris`)).json();
+  check('GET /geocode resolves Eiffel Tower', typeof gc.lat === 'number' && typeof gc.lng === 'number' && Math.abs(gc.lat - 48.8584) < 0.5 && gc.source, `lat=${gc.lat}, source=${gc.source}`);
+
+  // Global parking discovery test (Paris — Eiffel Tower) — Google Places when keyed, else OSM
   const gp = await (await fetch(`http://localhost:${BACKEND_PORT}/api/zones?lat=48.8584&lng=2.2945&radius=1.0&dest=Eiffel%20Tower`)).json();
   check('global parking discovery returns zones for Paris', gp.count > 0 && gp.zones.length > 0, `count=${gp.count}`);
-  check('global zones have source field', gp.zones.every(z => z.source === 'osm' || z.source === 'synthesized' || z.source === 'seed'));
+  check('global zones have source field', gp.zones.every(z => z.source === 'google' || z.source === 'osm' || z.source === 'synthesized' || z.source === 'seed'), [...new Set(gp.zones.map(z => z.source))].join(','));
   check('global zones have probability+status', gp.zones.every(z => z.current && typeof z.current.probability === 'number'));
 } catch (e) { check('backend API suite', false, e.message); }
 
@@ -146,9 +152,13 @@ try {
   check('location status shown', locText.length > 3, locText.slice(0, 70));
   await page.waitForFunction(() => window.__parkistics && window.__parkistics.state.mapReady, { timeout: 20000 });
   const provider = await page.evaluate(() => window.__parkistics.state.provider);
-  check('free leaflet map renders without key', provider === 'leaflet', provider);
-  check('leaflet map element initialized', await page.locator('#map.leaflet-container').isVisible());
-  check('leaflet tiles loaded', (await page.locator('#map img.leaflet-tile-loaded').count()) > 0);
+  check('map provider active (google or leaflet)', provider === 'google' || provider === 'leaflet', provider);
+  if (provider === 'google') {
+    check('google map element initialized', await page.locator('#map .gm-style').isVisible());
+  } else {
+    check('free leaflet map renders without key', await page.locator('#map.leaflet-container').isVisible());
+    check('leaflet tiles loaded', (await page.locator('#map img.leaflet-tile-loaded').count()) > 0);
+  }
 
   // zone buttons rendered live
   await page.waitForSelector('[data-testid^="zone-marker-"]', { timeout: 15000 });

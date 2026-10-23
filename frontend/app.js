@@ -135,7 +135,8 @@
     mongoFeed: null,
     selectedFeedDate: null,
     engineMode: 'live', // 'live' or 'edge'
-    dataSaver: false
+    dataSaver: false,
+    gmapsKey: null
   };
 
   const $ = (id) => document.getElementById(id);
@@ -443,27 +444,81 @@
     if ($('stat-rank')) $('stat-rank').textContent = t.name || 'Rookie';
   }
 
-  // ---------- Map (Leaflet + OpenStreetMap + PWA Cached Tiles) ----------
-  let map = null;
-  let markers = {};
+  // ---------- Map (Google Maps primary + Leaflet/OSM fallback) ----------
+  let map = null;           // google.maps.Map or Leaflet map
+  let markers = {};         // zoneId -> map marker (google or leaflet)
   let youMarker = null;
   let accuracyCircle = null;
   let destMarker = null;
   let radiusCircle = null;
+  let gmapsKey = null;
 
-  function pillHtml(z, pct, color) {
-    return `<div style="transform:translate(-50%,-110%)"><div style="display:flex;flex-direction:column;align-items:center">` +
+  // Safe cross-provider object removal (google setMap(null) vs leaflet removeLayer)
+  function removeMapObject(obj) {
+    if (!obj) return;
+    try {
+      if (state.provider === 'google') {
+        if (typeof obj.setMap === 'function') obj.setMap(null);
+        else if ('map' in obj) obj.map = null;
+      } else if (map && typeof map.removeLayer === 'function') {
+        if (map.hasLayer && map.hasLayer(obj)) map.removeLayer(obj);
+        else if (typeof obj.remove === 'function') obj.remove();
+      }
+    } catch {}
+  }
+
+  // Inner pill content (shared between Google AdvancedMarker and Leaflet divIcon)
+  function pillInnerHtml(z, pct, color) {
+    return `<div style="display:flex;flex-direction:column;align-items:center;pointer-events:auto;cursor:pointer">` +
       `<div style="display:flex;align-items:center;gap:4px;padding:2px 8px;border-radius:9999px;background:rgba(34,42,61,.92);color:${color};font:700 12px Inter,sans-serif;box-shadow:0 2px 8px rgba(0,0,0,.6);white-space:nowrap">` +
       `<span style="width:6px;height:6px;border-radius:9999px;background:${color}"></span><span>${pct}%</span></div>` +
       `<div style="margin-top:4px;padding:1px 6px;border-radius:6px;background:rgba(6,14,32,.85);color:#bccbb9;font:600 9px Inter,sans-serif;white-space:nowrap">${shortName(z.name)}</div>` +
-      `</div></div>`;
+      `</div>`;
+  }
+
+  function pillHtml(z, pct, color) {
+    return `<div style="transform:translate(-50%,-110%)">` + pillInnerHtml(z, pct, color) + `</div>`;
+  }
+
+  function pillContentNode(z, pct, color) {
+    const wrap = document.createElement('div');
+    wrap.innerHTML = pillInnerHtml(z, pct, color);
+    return wrap.firstElementChild;
   }
 
   function renderDestinationRadiusOnMap() {
     if (!state.mapReady || !map || !state.destCoords) return;
     try {
-      if (destMarker) { map.removeLayer(destMarker); destMarker = null; }
-      if (radiusCircle) { map.removeLayer(radiusCircle); radiusCircle = null; }
+      removeMapObject(destMarker); destMarker = null;
+      removeMapObject(radiusCircle); radiusCircle = null;
+
+      if (state.provider === 'google') {
+        const pinWrap = document.createElement('div');
+        pinWrap.innerHTML = `<div style="display:flex;flex-direction:column;align-items:center;pointer-events:none">` +
+          `<div style="background:#0f172a;color:#ffffff;padding:3px 9px;border-radius:9999px;font:700 11px Inter,sans-serif;box-shadow:0 3px 10px rgba(0,0,0,0.3);white-space:nowrap;display:flex;align-items:center;gap:4px">` +
+          `<span>🎯</span><span>${shortName(state.destination)}</span></div>` +
+          `<div style="width:2px;height:9px;background:#0f172a"></div>` +
+          `<div style="width:10px;height:10px;border-radius:50%;background:#16a34a;border:2px solid #ffffff;box-shadow:0 0 8px rgba(22,163,74,0.6)"></div>` +
+          `</div>`;
+        destMarker = new google.maps.AdvancedMarkerElement({
+          map,
+          position: { lat: state.destCoords.lat, lng: state.destCoords.lng },
+          content: pinWrap.firstElementChild,
+          zIndex: 999
+        });
+        radiusCircle = new google.maps.Circle({
+          map,
+          center: { lat: state.destCoords.lat, lng: state.destCoords.lng },
+          radius: state.searchRadiusKm * 1000,
+          strokeColor: '#16a34a',
+          strokeOpacity: 0.9,
+          strokeWeight: 2,
+          fillColor: '#22c55e',
+          fillOpacity: 0.08
+        });
+        map.fitBounds(radiusCircle.getBounds());
+        return;
+      }
 
       const destIcon = L.divIcon({
         className: 'dest-pin-marker',
@@ -499,6 +554,15 @@
     const found = PRESET_DESTINATIONS.find(d => q.includes(d.key) || d.name.toLowerCase().includes(q));
     if (found) return found;
 
+    // 1. Backend geocoder — Google Geocoding API when key present, OSM Nominatim fallback
+    try {
+      const g = await api(`/api/geocode?q=${encodeURIComponent(query)}`);
+      if (g && typeof g.lat === 'number' && typeof g.lng === 'number') {
+        return { name: g.name, lat: g.lat, lng: g.lng, geocodeSource: g.source };
+      }
+    } catch {}
+
+    // 2. Client-side Nominatim fallback (fully offline / edge mode)
     try {
       const resp = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=1`, {
         headers: { 'Accept': 'application/json' },
@@ -516,6 +580,108 @@
       }
     } catch {}
     return { name: query, lat: state.destCoords.lat, lng: state.destCoords.lng };
+  }
+
+  // ---------- Google Maps key resolution ----------
+  // Order: ?gmaps_key= URL param (persisted) → localStorage → frontend/config.js → backend /api/config
+  function resolveGmapsKeyLocal() {
+    const p = params.get('gmaps_key');
+    if (p !== null) {
+      try {
+        if (p) localStorage.setItem('ps_gmaps_key', p);
+        else localStorage.removeItem('ps_gmaps_key');
+      } catch {}
+      try {
+        const clean = new URL(location.href);
+        clean.searchParams.delete('gmaps_key');
+        history.replaceState(null, '', clean.toString());
+      } catch {}
+      return p || null;
+    }
+    try {
+      const saved = localStorage.getItem('ps_gmaps_key');
+      if (saved) return saved;
+    } catch {}
+    if (window.PARKISTICS_GMAPS_KEY) return String(window.PARKISTICS_GMAPS_KEY);
+    return null;
+  }
+
+  async function resolveGmapsKey() {
+    const local = resolveGmapsKeyLocal();
+    if (local) return local;
+    // Direct fetch (not api()) — short timeout, no engineMode side effects, map never blocks >1.5s
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 1500);
+      const r = await fetch(`${API_BASE}/api/config`, { signal: controller.signal });
+      clearTimeout(timer);
+      if (r.ok) {
+        const cfg = await r.json();
+        if (cfg && cfg.gmapsKey) return cfg.gmapsKey;
+      }
+    } catch {}
+    return null;
+  }
+
+  function loadGoogleMapsScript(key) {
+    return new Promise((resolve, reject) => {
+      if (window.google && window.google.maps) return resolve();
+      const s = document.createElement('script');
+      s.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(key)}&v=weekly&libraries=marker`;
+      s.async = true;
+      s.onload = () => resolve();
+      s.onerror = () => reject(new Error('gmaps-script-load-failed'));
+      document.head.appendChild(s);
+    });
+  }
+
+  // Invalid/rejected key → silently drop to Leaflet/OSM so the map always works
+  function fallbackToLeaflet(reason) {
+    if (state.provider === 'leaflet' || state.provider === 'leaflet-pending') return;
+    console.warn('Google Maps unavailable, falling back to Leaflet:', reason);
+    try { const el = $('map'); if (el) el.innerHTML = ''; } catch {}
+    map = null; markers = {}; youMarker = null; accuracyCircle = null; destMarker = null; radiusCircle = null;
+    state.mapReady = false; state.provider = null;
+    initLeaflet();
+  }
+  window.gm_authFailure = () => fallbackToLeaflet('auth-failure');
+
+  function initGoogleMap() {
+    map = new google.maps.Map($('map'), {
+      center: { lat: state.destCoords.lat, lng: state.destCoords.lng },
+      zoom: DEFAULT_ZOOM,
+      mapId: 'DEMO_MAP_ID', // public demo map id required for AdvancedMarker custom content
+      mapTypeControl: false,
+      streetViewControl: false,
+      fullscreenControl: false,
+      clickableIcons: false,
+      gestureHandling: 'greedy',
+      backgroundColor: '#e2e8f0'
+    });
+    state.provider = 'google';
+    state.mapReady = true;
+    setTimeout(() => {
+      try { google.maps.event.trigger(map, 'resize'); } catch {}
+    }, 150);
+    if (state.userLocation) placeYouMarker(state.userLocation);
+    renderDestinationRadiusOnMap();
+  }
+
+  async function initMap() {
+    gmapsKey = await resolveGmapsKey();
+    state.gmapsKey = gmapsKey;
+    if (gmapsKey) {
+      try {
+        await loadGoogleMapsScript(gmapsKey);
+        if (window.google && window.google.maps) {
+          initGoogleMap();
+          return;
+        }
+      } catch (e) {
+        console.warn('Google Maps failed to load, using Leaflet:', e);
+      }
+    }
+    await initLeaflet();
   }
 
   async function initLeaflet() {
@@ -576,7 +742,7 @@
     if (!state.mapReady || !map) return;
     Object.keys(markers).forEach(id => {
       if (!state.zones.find(z => z.id === id)) {
-        markers[id].remove();
+        removeMapObject(markers[id]);
         delete markers[id];
       }
     });
@@ -584,6 +750,21 @@
       const p = current[z.id] != null ? current[z.id] : (z.current ? z.current.probability : 0.5);
       const pct = Math.round(p * 100);
       const color = HEX[statusOf(p)];
+      if (state.provider === 'google') {
+        if (!markers[z.id]) {
+          const m = new google.maps.AdvancedMarkerElement({
+            map,
+            position: { lat: z.center.lat, lng: z.center.lng },
+            content: pillContentNode(z, pct, color),
+            title: z.name
+          });
+          m.addListener('click', () => selectZone(z.id));
+          markers[z.id] = m;
+        } else {
+          markers[z.id].content = pillContentNode(z, pct, color);
+        }
+        return;
+      }
       if (!markers[z.id]) {
         const m = L.marker([z.center.lat, z.center.lng], {
           icon: L.divIcon({ html: pillHtml(z, pct, color), className: '', iconSize: null }),
@@ -599,12 +780,52 @@
 
   function centerMap(lat, lng, zoom) {
     if (!state.mapReady || !map) return;
-    try { map.setView([lat, lng], zoom); } catch {}
+    try {
+      if (state.provider === 'google') {
+        map.setCenter({ lat, lng });
+        if (zoom) map.setZoom(zoom);
+      } else {
+        map.setView([lat, lng], zoom);
+      }
+    } catch {}
   }
 
   function placeYouMarker(loc) {
     if (!state.mapReady || !map) return;
     try {
+      if (state.provider === 'google') {
+        if (!youMarker) {
+          youMarker = new google.maps.Circle({
+            map,
+            center: { lat: loc.lat, lng: loc.lng },
+            radius: 9,
+            strokeColor: '#ffffff',
+            strokeWeight: 3,
+            fillColor: '#2563eb',
+            fillOpacity: 1
+          });
+        } else {
+          youMarker.setCenter({ lat: loc.lat, lng: loc.lng });
+        }
+        if (loc.accuracy && isFinite(loc.accuracy)) {
+          if (!accuracyCircle) {
+            accuracyCircle = new google.maps.Circle({
+              map,
+              center: { lat: loc.lat, lng: loc.lng },
+              radius: Math.min(loc.accuracy, 2000),
+              strokeColor: '#2563eb',
+              strokeOpacity: 0.4,
+              strokeWeight: 1,
+              fillColor: '#2563eb',
+              fillOpacity: 0.15
+            });
+          } else {
+            accuracyCircle.setCenter({ lat: loc.lat, lng: loc.lng });
+            accuracyCircle.setRadius(Math.min(loc.accuracy, 2000));
+          }
+        }
+        return;
+      }
       if (!youMarker) {
         youMarker = L.circleMarker([loc.lat, loc.lng], { radius: 9, color: '#fff', weight: 3, fillColor: '#2563eb', fillOpacity: 1 }).addTo(map);
         youMarker.bindTooltip('You are here');
@@ -1324,7 +1545,9 @@
   renderPoints();
   updateHeaderBadges();
   showView('view-forecast');
-  initLeaflet();
+  // Map: Google Maps when a key is available (URL param / localStorage / config.js / backend env),
+  // automatically falling back to free Leaflet + OpenStreetMap otherwise.
+  initMap();
   // 1. Boot IMMEDIATELY with edge zones (no network wait) so user sees data in <100ms
   boot();
   // 2. Geolocation runs async — when it resolves, re-centers map and refreshes zones for actual location

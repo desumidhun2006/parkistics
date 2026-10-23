@@ -52,10 +52,13 @@ app.use('/api/zones', require('./routes/zones'));
 app.use('/api/reports', require('./routes/reports'));
 app.use('/api/route', require('./routes/route'));
 app.use('/api/feed', require('./routes/feed'));
+app.use('/api/config', require('./routes/config'));
+app.use('/api/geocode', require('./routes/geocode'));
 
 app.get('/api', (req, res) => res.json({
   service: 'Parkistics backend v0',
   mongoConnected: isDBConnected(),
+  parkingDataset: (process.env.GOOGLE_MAPS_API_KEY || process.env.GOOGLE_MAPS_BROWSER_KEY) ? 'google-places' : 'openstreetmap',
   endpoints: [
     'GET /health',
     'GET /api/zones',
@@ -65,7 +68,9 @@ app.get('/api', (req, res) => res.json({
     'GET /api/feed?days=7&zoneId=&date=',
     'GET /api/feed/stats',
     'GET /api/feed/retention',
-    'POST /api/feed/sync'
+    'POST /api/feed/sync',
+    'GET /api/config',
+    'GET /api/geocode?q='
   ]
 }));
 

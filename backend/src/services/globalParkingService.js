@@ -1,7 +1,10 @@
 // Global Parking Discovery Service for Parkistics
-// Discovers real-time parking in ANY corner of the world using OpenStreetMap Nominatim
-// + intelligent contextual spatial parking synthesis fallback.
+// Discovers REAL parking facilities anywhere on Earth:
+//   1. Google Places API (New) — primary live parking dataset (real garages/lots/street parking with ratings & prices)
+//   2. OpenStreetMap Nominatim — free global fallback dataset
+//   3. Intelligent contextual spatial parking synthesis — offline last resort
 // Heavily optimized for Time (spatial bounding-box pruning + LRU cache), Space (lean representation), and Internet (fast failover & cached queries).
+const { findGoogleParking, googleKeyConfigured } = require('./googleParkingService');
 
 // In-memory LRU query cache (max 100 entries, 10 min TTL)
 const queryCache = new Map();
@@ -139,20 +142,8 @@ function generateContextualParking(lat, lng, radiusKm, destName, existingCount =
   return items;
 }
 
-async function findGlobalParking(lat, lng, radiusKm = 1.0, destName = 'Destination') {
-  // Check in-memory cache first for instant sub-millisecond return
-  const cacheKey = `${lat.toFixed(3)}:${lng.toFixed(3)}:${radiusKm.toFixed(1)}`;
-  const cached = getCached(cacheKey);
-  if (cached) return cached;
-
-  // 1. If near Berkeley pilot area, keep canonical seed zones
-  if (isNearBerkeley(lat, lng)) {
-    const { seedZones } = require('../data/seedZones');
-    setCache(cacheKey, seedZones);
-    return seedZones;
-  }
-
-  // 2. Query OpenStreetMap Nominatim for real parking anywhere on earth
+// OpenStreetMap Nominatim — free real-world parking dataset (fallback / gap filler)
+async function findOsmParking(lat, lng, radiusKm, destName) {
   const osmZones = [];
   try {
     const rad = Math.max(0.5, Math.min(10.0, radiusKm || 1.0));
@@ -163,7 +154,7 @@ async function findGlobalParking(lat, lng, radiusKm = 1.0, destName = 'Destinati
     const minLng = lng - lngDelta;
     const maxLng = lng + lngDelta;
 
-    const url = `https://nominatim.openstreetmap.org/search?amenity=parking&format=json&limit=15&viewbox=${minLng.toFixed(4)},${maxLat.toFixed(4)},${maxLng.toFixed(4)},${minLat.toFixed(4)}&bounded=1`;
+    const url = `https://nominatim.openstreetmap.org/search?amenity=parking&format=json&limit=20&viewbox=${minLng.toFixed(4)},${maxLat.toFixed(4)},${maxLng.toFixed(4)},${minLat.toFixed(4)}&bounded=1`;
     const res = await fetch(url, {
       headers: { 'User-Agent': 'ParkisticsApp/1.0 (https://github.com/desumidhun2006/parkistics)' },
       signal: AbortSignal.timeout(2500) // Fast 2.5s network timeout
@@ -183,12 +174,39 @@ async function findGlobalParking(lat, lng, radiusKm = 1.0, destName = 'Destinati
       }
     }
   } catch (err) {
-    // Network timeout or offline — fallback seamlessly to contextual parking synthesis
+    // Network timeout or offline — caller falls back to contextual synthesis
+  }
+  return osmZones;
+}
+
+async function findGlobalParking(lat, lng, radiusKm = 1.0, destName = 'Destination') {
+  // Check in-memory cache first for instant sub-millisecond return
+  const cacheKey = `v2:${lat.toFixed(3)}:${lng.toFixed(3)}:${radiusKm.toFixed(1)}`;
+  const cached = getCached(cacheKey);
+  if (cached) return cached;
+
+  // 1. If near Berkeley pilot area, keep canonical curated seed zones
+  if (isNearBerkeley(lat, lng)) {
+    const { seedZones } = require('../data/seedZones');
+    setCache(cacheKey, seedZones);
+    return seedZones;
   }
 
-  // 3. Supplement with contextual parking around target coordinates
-  const syntheticZones = generateContextualParking(lat, lng, radiusKm, destName, osmZones.length);
-  const combined = [...osmZones, ...syntheticZones];
+  // 2. Google Places API (New) — REAL live parking dataset (garages, lots, street parking)
+  //    Returns [] when Google answered but found nothing; null when unavailable (no key / quota / offline)
+  const googleZones = await findGoogleParking(lat, lng, radiusKm, destName);
+
+  // 3. OpenStreetMap Nominatim — free global dataset (fills gaps / works without a Google key)
+  let osmZones = [];
+  if (!googleZones || googleZones.length === 0) {
+    osmZones = await findOsmParking(lat, lng, radiusKm, destName);
+  }
+
+  // 4. Real dataset wins; contextual synthesis only as offline last resort
+  const realZones = googleZones && googleZones.length > 0 ? googleZones : osmZones;
+  const combined = realZones.length > 0
+    ? realZones.slice(0, 20)
+    : generateContextualParking(lat, lng, radiusKm, destName, 0);
   setCache(cacheKey, combined);
   return combined;
 }
@@ -198,5 +216,7 @@ module.exports = {
   isWithinRadius,
   destinationPoint,
   isNearBerkeley,
-  findGlobalParking
+  findGlobalParking,
+  findOsmParking,
+  googleKeyConfigured
 };

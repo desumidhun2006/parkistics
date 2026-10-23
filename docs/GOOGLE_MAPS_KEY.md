@@ -1,70 +1,84 @@
-# Getting a Google Maps API Key (reference only — not used by the current UI)
+# Google Maps + Real Parking Dataset Setup
 
-> **Note:** The current Stitch UI uses a free OpenStreetMap map and needs no key.
-> The Google Maps provider was removed with the Stitch integration. This guide is
-> retained for reference if a Google Maps option is re-added later.
+Parkistics uses Google for three things when a key is present:
 
-Takes ~5 minutes. You need a Google account. Google requires billing to be enabled,
-but the Maps JavaScript API includes a recurring **$200/month free credit**, which
-covers far more than local development and small pilots — you won't be charged
-unless you exceed it.
+1. **Real parking dataset** — the backend queries the **Places API (New) Nearby Search**
+   for actual parking facilities (garages, lots, street parking with ratings, prices,
+   parking options) near any destination worldwide.
+2. **Map view** — the frontend renders the **Maps JavaScript API** map with custom
+   availability pill markers (Advanced Markers).
+3. **Geocoding** — destination search resolves place names via the **Geocoding API**
+   (server-side `/api/geocode`), falling back to OpenStreetMap Nominatim.
 
-## Step 1 — Open Google Cloud Console
+Without a key everything still works: parking discovery falls back to the free
+OpenStreetMap dataset and the map falls back to Leaflet + OSM tiles.
 
-Go to https://console.cloud.google.com/ and sign in.
+## Setup (≈5 minutes)
 
-## Step 2 — Create (or select) a project
+You need a Google account. Billing must be enabled, but Google Maps Platform includes
+a recurring **$200/month free credit** that covers far more than local development.
 
-1. Click the project dropdown at the top → **New Project**.
-2. Name it e.g. `parkistics` → **Create**. Wait for it to finish, then select it.
+### 1. Create a project
 
-## Step 3 — Enable billing
+https://console.cloud.google.com/ → project dropdown → **New Project** → name it
+(e.g. `parkistics`) → **Create** → select it.
 
-1. Open the ☰ menu → **Billing**.
-2. **Link a billing account** (create one if needed — card required, free credit applies).
-3. Make sure your `parkistics` project is linked to it.
+### 2. Enable billing
 
-## Step 4 — Enable the Maps JavaScript API
+☰ → **Billing** → link a billing account to the project (card required, free credit applies).
 
-1. ☰ menu → **APIs & Services → Library**.
-2. Search **"Maps JavaScript API"** → click it → **Enable**.
+### 3. Enable these three APIs
 
-## Step 5 — Create the API key
+☰ → **APIs & Services → Library** → search each name → **Enable**:
 
-1. Go to **APIs & Services → Credentials**.
-2. **+ Create Credentials → API key**. Copy the key (starts with `AIza...`).
+- **Maps JavaScript API** (map view)
+- **Places API (New)** (real parking dataset)
+- **Geocoding API** (destination search)
 
-## Step 6 — Restrict the key (recommended)
+### 4. Create + restrict the key
 
-On the key's page:
+☰ → **APIs & Services → Credentials** → **+ Create Credentials → API key**.
 
-- **Application restrictions → HTTP referrers (web sites)**, add:
-  - `http://localhost:*/*`
-  - `http://127.0.0.1:*/*`
-  - your deployed domain later, e.g. `https://your-site.com/*`
-- **API restrictions → Restrict key → select only "Maps JavaScript API"**.
+On the key page:
+
+- **Application restrictions → HTTP referrers**: add `http://localhost:*/*`,
+  `http://127.0.0.1:*/*`, and your deployed domain later.
+- **API restrictions → Restrict key** → select the three APIs from step 3.
 - **Save.**
 
-## Step 7 — Use it in Parkistics (pick one)
+### 5. Give the key to Parkistics (any of these)
 
-- **Easiest:** open the site once with the key in the URL
-  (it's saved in the browser for future visits):
-  `http://localhost:5173/?gmaps_key=PASTE_KEY_HERE`
-- **File:** `cp frontend/config.example.js frontend/config.js`,
-  paste the key in `config.js` (this file is gitignored — never committed).
+| Method | How | Best for |
+|---|---|---|
+| Backend env (recommended) | `backend/.env`: `GOOGLE_MAPS_API_KEY=AIza...` | full stack: real dataset + map + geocode |
+| URL param | open `http://localhost:4000/?gmaps_key=AIza...` once (saved in browser) | quick try |
+| Browser file | `cp frontend/config.example.js frontend/config.js`, paste key (gitignored) | frontend-only |
 
-Reload the page, allow the location prompt, and the map centers on you.
+The frontend fetches the key from the backend via `GET /api/config` automatically, so
+setting the backend env var alone is usually enough. `GOOGLE_MAPS_BROWSER_KEY` may be
+set to a *separate* referrer-restricted key for the map view; otherwise the backend key
+is reused for the browser (keep it referrer-restricted!).
+
+Key resolution order in the frontend: `?gmaps_key=` URL param → browser localStorage →
+`frontend/config.js` → backend `/api/config`. Clear a stored key with `?gmaps_key=`
+(empty). If the key is invalid or unauthorized, `gm_authFailure` silently falls back to
+the free Leaflet/OSM map.
+
+## Verify
+
+- `curl http://localhost:4000/api/config` → `"parkingDataset": "google-places"` and a non-null `gmapsKey`.
+- `curl 'http://localhost:4000/api/zones?lat=48.8584&lng=2.2945&radius=1.0&dest=Eiffel'` → zones with `"source": "google"` and real facility names.
+- `curl 'http://localhost:4000/api/geocode?q=Eiffel+Tower'` → `"source": "google"`.
+- The page map shows Google Maps tiles (check `state.provider === 'google'` in console).
 
 ## Troubleshooting
 
 | What you see | Cause → Fix |
 |---|---|
-| Map area shows "needs an API key" notice | No key configured → do Step 7 |
-| `RefererNotAllowedMapError` in console | Current URL not in key's HTTP-referrer list → Step 6, add it |
-| `ApiNotActivatedMapError` | Maps JavaScript API not enabled → Step 4 |
-| `InvalidKeyMapError` | Typo in key or key deleted → regenerate in Credentials |
-| Map loads but location stays on default area | Location permission denied → click **📍 Use my location** and Allow |
-| Billing error on enable | Project not linked to a billing account → Step 3 |
-
-To remove a stored key from the browser: open
-`http://localhost:5173/?gmaps_key=` (empty value clears it).
+| Map shows Leaflet/OSM tiles, zones say `source: osm` | No key configured or fetch failed → check env + `/api/config` |
+| `RefererNotAllowedMapError` | Current URL not in key's referrer list → step 4 |
+| `ApiNotActivatedMapError` | One of the three APIs not enabled → step 3 |
+| `InvalidKeyMapError` / `REQUEST_DENIED` on Places | Typo in key, billing, or API restriction → steps 2–4 |
+| Zones come back `synthesized` | Both Google and OSM unreachable (offline) → edge mode |
+| Billing error on enable | Project not linked to a billing account → step 2 |
+| Location stays on default area | Location permission denied → click 📍 and Allow |
