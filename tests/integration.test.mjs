@@ -53,13 +53,18 @@ async function runTests() {
   assert.ok(radiusData.zones.every(z => z.distanceKm <= 1.0), 'All returned zones must be <= 1.0km');
   console.log(`✓ 5. Fast spatial bounding-box radius search verified (${radiusData.count} zones within 1.0km)`);
 
-  // 6. Global Parking Discovery (Anywhere on Earth)
+  // 6. Global Parking Discovery (Anywhere on Earth) — Google Places only, no fallback dataset
   const parisRes = await fetch(`${BACKEND_URL}/api/zones?lat=48.8584&lng=2.2945&radius=1.0&dest=Eiffel%20Tower`);
   const parisData = await parisRes.json();
-  assert.ok(parisData.count > 0, 'Global parking discovery must discover parking for Paris');
-  assert.ok(parisData.zones.length > 0);
-  assert.ok(parisData.zones.every(z => ['google', 'osm', 'synthesized', 'seed'].includes(z.source)));
-  console.log(`✓ 6. Global parking discovery verified for Paris (${parisData.count} facilities found)`);
+  const gmapsKeyed = Boolean(process.env.GOOGLE_MAPS_API_KEY);
+  if (gmapsKeyed) {
+    assert.ok(parisData.count > 0, 'Global parking discovery must discover parking for Paris');
+    assert.ok(parisData.zones.every(z => z.source === 'google'));
+    console.log(`✓ 6. Global parking discovery verified for Paris (${parisData.count} real Google Places facilities found)`);
+  } else {
+    assert.strictEqual(parisData.count, 0, 'No fallback dataset — empty result without GOOGLE_MAPS_API_KEY');
+    console.log('✓ 6. No-fallback behavior verified — Paris empty without Google key (configure GOOGLE_MAPS_API_KEY for real data)');
+  }
 
   // 7. Forecast Horizon Series (Time optimization)
   const fcRes = await fetch(`${BACKEND_URL}/api/zones/zone-mall-gateway/forecast?arrival=${encodeURIComponent(new Date().toISOString())}`);

@@ -2,7 +2,7 @@
 // Queries Google's live Places database for actual parking facilities (garages, lots,
 // street parking) near any coordinates on Earth, with rating/price/parking-options metadata.
 // Requires GOOGLE_MAPS_API_KEY (or GOOGLE_MAPS_BROWSER_KEY) env var with "Places API (New)" enabled.
-// Returns null when unavailable/unconfigured so callers fall back to OpenStreetMap Nominatim.
+// No fallback data providers — returns [] when unconfigured or when Google finds nothing.
 
 const PRICE_PER_HOUR = {
   PRICE_LEVEL_FREE: 0,

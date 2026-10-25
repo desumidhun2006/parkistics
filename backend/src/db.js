@@ -1,5 +1,8 @@
 const mongoose = require('mongoose');
 
+// Fail fast instead of buffering commands when no DB is attached (serverless cold paths)
+mongoose.set('bufferCommands', false);
+
 let mongoMemoryServer = null;
 
 async function connectDB() {
@@ -27,6 +30,11 @@ async function connectDB() {
     console.log('[MongoDB] Connected to local MongoDB at mongodb://127.0.0.1:27017/parkistics');
     return mongoose.connection;
   } catch (localErr) {
+    // Serverless platforms (Vercel etc.) must not download a mongod binary at runtime
+    if (process.env.VERCEL) {
+      console.log('[MongoDB] Serverless environment detected — running without a database (in-memory app state).');
+      throw new Error('no-database-on-serverless');
+    }
     // Local mongod is not running; spin up in-memory MongoDB seamlessly
     console.log('[MongoDB] Local mongod daemon not detected. Launching embedded MongoMemoryServer...');
     try {

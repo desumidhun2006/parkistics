@@ -9,6 +9,10 @@ const FRONT_PORT = 5173;
 const shots = 'frontend-screenshots';
 fs.mkdirSync(shots, { recursive: true });
 
+// Key-aware suite: with GOOGLE_MAPS_API_KEY → Google-only paths; without → graceful no-fallback behavior
+const GMAPS = Boolean(process.env.GOOGLE_MAPS_API_KEY);
+console.log(`Google Maps key: ${GMAPS ? 'PRESENT (google-only assertions)' : 'ABSENT (asserting graceful key-required behavior)'}`);
+
 function wait(ms) { return new Promise(r => setTimeout(r, ms)); }
 async function waitFor(url, timeout = 20000) {
   const t0 = Date.now();
@@ -44,16 +48,26 @@ try {
   const rt = await (await fetch(`http://localhost:${BACKEND_PORT}/api/route?destination=Mall&lat=37.8702&lng=-122.2681&radius=1.0&time=${encodeURIComponent(new Date().toISOString())}`)).json();
   check('GET /route ranked + saved time', rt.ranked && rt.ranked.length > 0 && typeof rt.searchTimeSavedMin === 'number');
 
-  // Google Maps config + geocode endpoints
+  // Google Maps config + geocode endpoints (Google-only — no fallback providers)
   const cfg = await (await fetch(`http://localhost:${BACKEND_PORT}/api/config`)).json();
-  check('GET /config returns gmapsKey + parkingDataset', 'gmapsKey' in cfg && (cfg.parkingDataset === 'google-places' || cfg.parkingDataset === 'openstreetmap'), `dataset=${cfg.parkingDataset}, key=${cfg.gmapsKey ? 'set' : 'null'}`);
-  const gc = await (await fetch(`http://localhost:${BACKEND_PORT}/api/geocode?q=Eiffel%20Tower%2C%20Paris`)).json();
-  check('GET /geocode resolves Eiffel Tower', typeof gc.lat === 'number' && typeof gc.lng === 'number' && Math.abs(gc.lat - 48.8584) < 0.5 && gc.source, `lat=${gc.lat}, source=${gc.source}`);
+  check('GET /config returns gmapsKey + parkingDataset', 'gmapsKey' in cfg && (cfg.parkingDataset === 'google-places' || cfg.parkingDataset === 'unconfigured'), `dataset=${cfg.parkingDataset}, key=${cfg.gmapsKey ? 'set' : 'null'}`);
+  const gcRes = await fetch(`http://localhost:${BACKEND_PORT}/api/geocode?q=Eiffel%20Tower%2C%20Paris`);
+  if (GMAPS) {
+    const gc = await gcRes.json();
+    check('GET /geocode resolves Eiffel Tower (google)', gcRes.ok && typeof gc.lat === 'number' && typeof gc.lng === 'number' && Math.abs(gc.lat - 48.8584) < 0.5 && gc.source === 'google', `lat=${gc.lat}, source=${gc.source}`);
+  } else {
+    check('GET /geocode returns 404 without key (no fallback geocoder)', gcRes.status === 404, `status=${gcRes.status}`);
+  }
 
-  // Global parking discovery test (Paris — Eiffel Tower) — Google Places when keyed, else OSM
-  const gp = await (await fetch(`http://localhost:${BACKEND_PORT}/api/zones?lat=48.8584&lng=2.2945&radius=1.0&dest=Eiffel%20Tower`)).json();
-  check('global parking discovery returns zones for Paris', gp.count > 0 && gp.zones.length > 0, `count=${gp.count}`);
-  check('global zones have source field', gp.zones.every(z => z.source === 'google' || z.source === 'osm' || z.source === 'synthesized' || z.source === 'seed'), [...new Set(gp.zones.map(z => z.source))].join(','));
+  // Global parking discovery test (Paris — Eiffel Tower) — Google Places only
+  const gpRes = await fetch(`http://localhost:${BACKEND_PORT}/api/zones?lat=48.8584&lng=2.2945&radius=1.0&dest=Eiffel%20Tower`);
+  const gp = await gpRes.json();
+  if (GMAPS) {
+    check('global parking discovery returns zones for Paris', gp.count > 0 && gp.zones.length > 0, `count=${gp.count}`);
+    check('global zones sourced from google', gp.zones.every(z => z.source === 'google'), [...new Set(gp.zones.map(z => z.source))].join(','));
+  } else {
+    check('global discovery returns empty without key (no fallback dataset)', gp.count === 0 && Array.isArray(gp.zones), `count=${gp.count}`);
+  }
   check('global zones have probability+status', gp.zones.every(z => z.current && typeof z.current.probability === 'number'));
 } catch (e) { check('backend API suite', false, e.message); }
 
@@ -84,6 +98,8 @@ try {
   check('points display removed from header', await page.locator('#points-display').count() === 0);
   check('badges display removed from header', await page.locator('#badges-display').count() === 0);
   check('api status text removed from header', await page.locator('#api-status').count() === 0);
+  check('Live API engine badge removed', await page.locator('#engine-status-badge').count() === 0);
+  check('Turbo / Data Saver button removed', await page.locator('#data-saver-btn').count() === 0);
 
   // destination search input & default radius check
   await page.waitForSelector('[data-testid="dest-search-input"]', { timeout: 8000 });
@@ -117,11 +133,16 @@ try {
   await page.locator('[data-testid="dest-search-btn"]').click();
   await page.waitForTimeout(3000);
   const globalDest = await page.evaluate(() => window.__parkistics.state.destination);
-  check('global search resolves Eiffel Tower', globalDest.toLowerCase().includes('eiffel') || globalDest.toLowerCase().includes('paris') || globalDest.toLowerCase().includes('tour'), globalDest);
-  const globalCards = await page.locator('#nearby-cards article').count();
-  check('global parking cards rendered for Paris', globalCards > 0, `${globalCards} cards`);
   const globalCoords = await page.evaluate(() => window.__parkistics.state.destCoords);
-  check('destination coords moved to Paris', Math.abs(globalCoords.lat - 48.85) < 1 && Math.abs(globalCoords.lng - 2.3) < 1, `lat=${globalCoords.lat}, lng=${globalCoords.lng}`);
+  if (GMAPS) {
+    check('global search resolves Eiffel Tower (google geocode)', globalDest.toLowerCase().includes('eiffel') || globalDest.toLowerCase().includes('paris') || globalDest.toLowerCase().includes('tour'), globalDest);
+    const globalCards = await page.locator('#nearby-cards article').count();
+    check('global parking cards rendered for Paris', globalCards > 0, `${globalCards} cards`);
+    check('destination coords moved to Paris', Math.abs(globalCoords.lat - 48.85) < 1 && Math.abs(globalCoords.lng - 2.3) < 1, `lat=${globalCoords.lat}, lng=${globalCoords.lng}`);
+  } else {
+    check('unresolvable search rejected without geocoder (no fallback)', !globalDest.toLowerCase().includes('eiffel') && !globalDest.toLowerCase().includes('paris'), globalDest);
+    check('coords unchanged after failed search', Math.abs(globalCoords.lat - 37.87) < 0.1, `lat=${globalCoords.lat}`);
+  }
 
   // reset to 1.0 km and Downtown for subsequent checks
   await page.locator('#radius-chips [data-radius="1.0"]').click();
@@ -150,14 +171,18 @@ try {
   check('locate-me button visible', await page.locator('[data-testid="locate-me"]').isVisible());
   const locText = await page.locator('[data-testid="location-status"]').innerText();
   check('location status shown', locText.length > 3, locText.slice(0, 70));
-  await page.waitForFunction(() => window.__parkistics && window.__parkistics.state.mapReady, { timeout: 20000 });
-  const provider = await page.evaluate(() => window.__parkistics.state.provider);
-  check('map provider active (google or leaflet)', provider === 'google' || provider === 'leaflet', provider);
-  if (provider === 'google') {
+
+  if (GMAPS) {
+    await page.waitForFunction(() => window.__parkistics && window.__parkistics.state.mapReady, { timeout: 20000 });
+    const provider = await page.evaluate(() => window.__parkistics.state.provider);
+    check('google maps is the map provider', provider === 'google', provider);
     check('google map element initialized', await page.locator('#map .gm-style').isVisible());
   } else {
-    check('free leaflet map renders without key', await page.locator('#map.leaflet-container').isVisible());
-    check('leaflet tiles loaded', (await page.locator('#map img.leaflet-tile-loaded').count()) > 0);
+    await page.waitForSelector('[data-testid="gmaps-notice"]', { timeout: 15000 });
+    check('key-required notice shown (no fallback map)', await page.locator('[data-testid="gmaps-notice"]').isVisible());
+    const provider = await page.evaluate(() => window.__parkistics.state.provider);
+    check('no map provider without key', provider === null, String(provider));
+    check('leaflet fully removed from page', (await page.locator('#map.leaflet-container').count()) === 0 && (await page.evaluate(() => Boolean(window.L))) === false);
   }
 
   // zone buttons rendered live

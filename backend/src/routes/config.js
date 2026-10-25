@@ -10,7 +10,7 @@ router.get('/', (req, res) => {
   res.setHeader('Cache-Control', 'public, max-age=300');
   res.json({
     gmapsKey: browserKey || null,
-    parkingDataset: googleKeyConfigured() ? 'google-places' : 'openstreetmap',
+    parkingDataset: googleKeyConfigured() ? 'google-places' : 'unconfigured',
     at: new Date().toISOString()
   });
 });

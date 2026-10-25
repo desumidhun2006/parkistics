@@ -58,7 +58,7 @@ app.use('/api/geocode', require('./routes/geocode'));
 app.get('/api', (req, res) => res.json({
   service: 'Parkistics backend v0',
   mongoConnected: isDBConnected(),
-  parkingDataset: (process.env.GOOGLE_MAPS_API_KEY || process.env.GOOGLE_MAPS_BROWSER_KEY) ? 'google-places' : 'openstreetmap',
+  parkingDataset: (process.env.GOOGLE_MAPS_API_KEY || process.env.GOOGLE_MAPS_BROWSER_KEY) ? 'google-places' : 'unconfigured',
   endpoints: [
     'GET /health',
     'GET /api/zones',

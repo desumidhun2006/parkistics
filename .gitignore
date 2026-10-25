@@ -9,6 +9,9 @@ coverage/
 .env.local
 frontend/config.js
 
+# Vercel
+.vercel/
+
 # Python
 __pycache__/
 *.pyc

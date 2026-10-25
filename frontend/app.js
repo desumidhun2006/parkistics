@@ -1,7 +1,8 @@
-// Parkistics frontend v4 — Unified, Edge-Ready, Heavily Optimized Engine
+// Parkistics frontend v5 — Google-only engine
 // Heavily optimized for Time (spatial bounding-box pruning, in-memory LRU caches),
 // Space (lean payload representations, DOM node recycling, bounded caches),
-// and Internet (Service Worker tile caching, compression, Data Saver mode, offline resilience).
+// and Internet (Service Worker static-asset caching, compression, offline report queueing).
+// Map + parking dataset + geocoding all run on Google Maps Platform (no fallback providers).
 (function () {
   const params = new URLSearchParams(location.search);
 
@@ -19,7 +20,6 @@
 
   const DEFAULT_CENTER = { lat: 37.8715, lng: -122.273 };
   const DEFAULT_ZOOM = 14;
-  const LEAFLET_CSS = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
   const WALK_OPTIONS = [5, 8, 12, 15];
 
   const HEX = { high: '#22c55e', medium: '#f7bf1e', low: '#ffb4ab' };
@@ -135,7 +135,6 @@
     mongoFeed: null,
     selectedFeedDate: null,
     engineMode: 'live', // 'live' or 'edge'
-    dataSaver: false,
     gmapsKey: null
   };
 
@@ -146,12 +145,6 @@
     state.myReports = JSON.parse(localStorage.getItem('ps_my_reports') || '[]');
     state.points = state.myReports.reduce((s, r) => s + (r.points || 0), 0);
   } catch { state.myReports = []; state.points = 0; }
-
-  // Load Data Saver preference or detect connection saveData
-  try {
-    const savedDS = localStorage.getItem('ps_data_saver');
-    state.dataSaver = savedDS !== null ? savedDS === 'true' : (navigator.connection && navigator.connection.saveData === true);
-  } catch { state.dataSaver = false; }
 
   function saveReports() {
     try { localStorage.setItem('ps_my_reports', JSON.stringify(state.myReports)); } catch {}
@@ -165,46 +158,10 @@
   function kindLabel(kind) { return kind === 'lot' ? 'Off-street Lot' : kind === 'garage' ? 'Multi-Level Garage' : kind === 'street' ? 'Street Block' : 'Zone Cluster'; }
   function dirHref(lat, lng) { return `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`; }
 
-  // Update Status and Data Saver Badges in Header
-  function updateHeaderBadges() {
-    const pill = $('engine-status-badge');
-    const text = $('engine-status-text');
-    const dot = $('engine-dot');
-    if (pill && text && dot) {
-      if (state.engineMode === 'live') {
-        pill.className = 'flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 text-[11px] font-bold shadow-xs';
-        dot.className = 'w-2 h-2 rounded-full bg-emerald-500 animate-pulse';
-        text.textContent = 'Live API';
-      } else {
-        pill.className = 'flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-blue-50 text-blue-700 border border-blue-200 text-[11px] font-bold shadow-xs';
-        dot.className = 'w-2 h-2 rounded-full bg-blue-500';
-        text.textContent = '⚡ Edge Engine';
-      }
-    }
-
-    const dsBtn = $('data-saver-btn');
-    const dsLabel = $('data-saver-label');
-    const dsIcon = $('data-saver-icon');
-    if (dsBtn && dsLabel && dsIcon) {
-      if (state.dataSaver) {
-        dsLabel.textContent = 'Data Saver';
-        dsIcon.textContent = 'eco';
-        dsIcon.className = 'material-symbols-outlined text-[14px] text-emerald-600';
-        dsBtn.className = 'flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-[11px] font-bold transition-all cursor-pointer border border-emerald-300';
-      } else {
-        dsLabel.textContent = 'Turbo';
-        dsIcon.textContent = 'bolt';
-        dsIcon.className = 'material-symbols-outlined text-[14px] text-amber-500';
-        dsBtn.className = 'flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-bold transition-all cursor-pointer border border-slate-200';
-      }
-    }
-  }
-
-  // Network API with Fast Timeout & Automatic Edge Fallback
+  // Network API with Fast Timeout
   async function api(path, opts = {}) {
-    const timeoutMs = state.dataSaver ? 2000 : 3500;
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    const timer = setTimeout(() => controller.abort(), 3500);
 
     try {
       const r = await fetch(`${API_BASE}${path}`, {
@@ -212,14 +169,12 @@
         signal: controller.signal,
         headers: {
           'Content-Type': 'application/json',
-          ...(state.dataSaver ? { 'X-Data-Saver': '1' } : {}),
           ...(opts.headers || {})
         }
       });
       clearTimeout(timer);
       if (!r.ok) throw new Error(`API ${r.status}`);
       state.engineMode = 'live';
-      updateHeaderBadges();
       return await r.json();
     } catch (err) {
       clearTimeout(timer);
@@ -301,37 +256,6 @@
         time: dt.toISOString(),
         probability: Math.round(prob * 100) / 100,
         confidence: Math.round(conf * 100) / 100
-      };
-    });
-  }
-
-  // Client-Side Contextual Parking Discovery Fallback
-  function clientGenerateContextualParking(lat, lng, radiusKm, destName) {
-    const cleanDest = (destName || 'Destination').split(',')[0].trim();
-    const archetypes = [
-      { title: 'Central Public Garage', kind: 'garage', cap: 340, price: 4.0, bearing: 25, distPct: 0.15, tags: ['transit', 'shopping'] },
-      { title: 'Plaza Surface Lot', kind: 'lot', cap: 180, price: 2.5, bearing: 115, distPct: 0.30, tags: ['commercial', 'dining'] },
-      { title: 'Station Deck', kind: 'garage', cap: 290, price: 3.5, bearing: 205, distPct: 0.45, tags: ['transit'] },
-      { title: 'Commercial Strip Metered Row', kind: 'street', cap: 50, price: 2.0, bearing: 300, distPct: 0.25, tags: ['retail', 'dining'] },
-      { title: 'Market Square Lot', kind: 'lot', cap: 150, price: 2.5, bearing: 70, distPct: 0.60, tags: ['shopping'] },
-      { title: 'East District Garage', kind: 'garage', cap: 260, price: 3.0, bearing: 160, distPct: 0.75, tags: ['commercial'] },
-      { title: 'Northside Metered Row', kind: 'street', cap: 42, price: 1.5, bearing: 345, distPct: 0.50, tags: ['residential'] },
-      { title: 'West Hub Parking Lot', kind: 'lot', cap: 190, price: 2.5, bearing: 255, distPct: 0.85, tags: ['transit', 'civic'] }
-    ];
-
-    return archetypes.map((arch, i) => {
-      const distKm = Math.max(0.06, radiusKm * arch.distPct);
-      const coords = destinationPoint(lat, lng, distKm, arch.bearing);
-      return {
-        id: `gz-${Math.round(lat * 1000)}-${Math.round(lng * 1000)}-${i + 1}`,
-        name: `${cleanDest} ${arch.title}`,
-        kind: arch.kind,
-        center: coords,
-        capacity: arch.cap,
-        pricePerHour: arch.price,
-        walkTo: cleanDest,
-        poiTags: arch.tags,
-        source: 'edge-synthesized'
       };
     });
   }
@@ -444,30 +368,23 @@
     if ($('stat-rank')) $('stat-rank').textContent = t.name || 'Rookie';
   }
 
-  // ---------- Map (Google Maps primary + Leaflet/OSM fallback) ----------
-  let map = null;           // google.maps.Map or Leaflet map
-  let markers = {};         // zoneId -> map marker (google or leaflet)
+  // ---------- Map (Google Maps only — no fallback providers) ----------
+  let map = null;           // google.maps.Map
+  let markers = {};         // zoneId -> google.maps.AdvancedMarkerElement
   let youMarker = null;
   let accuracyCircle = null;
   let destMarker = null;
   let radiusCircle = null;
   let gmapsKey = null;
 
-  // Safe cross-provider object removal (google setMap(null) vs leaflet removeLayer)
   function removeMapObject(obj) {
     if (!obj) return;
     try {
-      if (state.provider === 'google') {
-        if (typeof obj.setMap === 'function') obj.setMap(null);
-        else if ('map' in obj) obj.map = null;
-      } else if (map && typeof map.removeLayer === 'function') {
-        if (map.hasLayer && map.hasLayer(obj)) map.removeLayer(obj);
-        else if (typeof obj.remove === 'function') obj.remove();
-      }
+      if (typeof obj.setMap === 'function') obj.setMap(null);
+      else if ('map' in obj) obj.map = null;
     } catch {}
   }
 
-  // Inner pill content (shared between Google AdvancedMarker and Leaflet divIcon)
   function pillInnerHtml(z, pct, color) {
     return `<div style="display:flex;flex-direction:column;align-items:center;pointer-events:auto;cursor:pointer">` +
       `<div style="display:flex;align-items:center;gap:4px;padding:2px 8px;border-radius:9999px;background:rgba(34,42,61,.92);color:${color};font:700 12px Inter,sans-serif;box-shadow:0 2px 8px rgba(0,0,0,.6);white-space:nowrap">` +
@@ -476,14 +393,25 @@
       `</div>`;
   }
 
-  function pillHtml(z, pct, color) {
-    return `<div style="transform:translate(-50%,-110%)">` + pillInnerHtml(z, pct, color) + `</div>`;
-  }
-
   function pillContentNode(z, pct, color) {
     const wrap = document.createElement('div');
     wrap.innerHTML = pillInnerHtml(z, pct, color);
     return wrap.firstElementChild;
+  }
+
+  // Full-viewport notice shown inside #map when no usable Google Maps key is configured
+  function showGmapsNotice(title, subHtml) {
+    try {
+      const el = $('map');
+      if (!el || el.querySelector('.gmaps-notice')) return;
+      const div = document.createElement('div');
+      div.className = 'gmaps-notice';
+      div.setAttribute('data-testid', 'gmaps-notice');
+      div.innerHTML = `<span class="material-symbols-outlined text-[34px] text-emerald-600">map</span>` +
+        `<span class="gmaps-notice-title">${title}</span>` +
+        `<span class="gmaps-notice-sub">${subHtml}</span>`;
+      el.appendChild(div);
+    } catch {}
   }
 
   function renderDestinationRadiusOnMap() {
@@ -492,57 +420,30 @@
       removeMapObject(destMarker); destMarker = null;
       removeMapObject(radiusCircle); radiusCircle = null;
 
-      if (state.provider === 'google') {
-        const pinWrap = document.createElement('div');
-        pinWrap.innerHTML = `<div style="display:flex;flex-direction:column;align-items:center;pointer-events:none">` +
-          `<div style="background:#0f172a;color:#ffffff;padding:3px 9px;border-radius:9999px;font:700 11px Inter,sans-serif;box-shadow:0 3px 10px rgba(0,0,0,0.3);white-space:nowrap;display:flex;align-items:center;gap:4px">` +
-          `<span>🎯</span><span>${shortName(state.destination)}</span></div>` +
-          `<div style="width:2px;height:9px;background:#0f172a"></div>` +
-          `<div style="width:10px;height:10px;border-radius:50%;background:#16a34a;border:2px solid #ffffff;box-shadow:0 0 8px rgba(22,163,74,0.6)"></div>` +
-          `</div>`;
-        destMarker = new google.maps.AdvancedMarkerElement({
-          map,
-          position: { lat: state.destCoords.lat, lng: state.destCoords.lng },
-          content: pinWrap.firstElementChild,
-          zIndex: 999
-        });
-        radiusCircle = new google.maps.Circle({
-          map,
-          center: { lat: state.destCoords.lat, lng: state.destCoords.lng },
-          radius: state.searchRadiusKm * 1000,
-          strokeColor: '#16a34a',
-          strokeOpacity: 0.9,
-          strokeWeight: 2,
-          fillColor: '#22c55e',
-          fillOpacity: 0.08
-        });
-        map.fitBounds(radiusCircle.getBounds());
-        return;
-      }
-
-      const destIcon = L.divIcon({
-        className: 'dest-pin-marker',
-        html: `<div style="display:flex;flex-direction:column;align-items:center;transform:translate(-50%,-100%);cursor:default">` +
-          `<div style="background:#0f172a;color:#ffffff;padding:3px 9px;border-radius:9999px;font:700 11px Inter,sans-serif;box-shadow:0 3px 10px rgba(0,0,0,0.3);white-space:nowrap;display:flex;align-items:center;gap:4px">` +
-          `<span>🎯</span><span>${shortName(state.destination)}</span></div>` +
-          `<div style="width:2px;height:9px;background:#0f172a"></div>` +
-          `<div style="width:10px;height:10px;border-radius:50%;background:#16a34a;border:2px solid #ffffff;box-shadow:0 0 8px rgba(22,163,74,0.6)"></div>` +
-          `</div>`,
-        iconSize: [0, 0]
+      const pinWrap = document.createElement('div');
+      pinWrap.innerHTML = `<div style="display:flex;flex-direction:column;align-items:center;pointer-events:none">` +
+        `<div style="background:#0f172a;color:#ffffff;padding:3px 9px;border-radius:9999px;font:700 11px Inter,sans-serif;box-shadow:0 3px 10px rgba(0,0,0,0.3);white-space:nowrap;display:flex;align-items:center;gap:4px">` +
+        `<span>🎯</span><span>${shortName(state.destination)}</span></div>` +
+        `<div style="width:2px;height:9px;background:#0f172a"></div>` +
+        `<div style="width:10px;height:10px;border-radius:50%;background:#16a34a;border:2px solid #ffffff;box-shadow:0 0 8px rgba(22,163,74,0.6)"></div>` +
+        `</div>`;
+      destMarker = new google.maps.AdvancedMarkerElement({
+        map,
+        position: { lat: state.destCoords.lat, lng: state.destCoords.lng },
+        content: pinWrap.firstElementChild,
+        zIndex: 999
       });
-
-      destMarker = L.marker([state.destCoords.lat, state.destCoords.lng], { icon: destIcon, zIndexOffset: 999 }).addTo(map);
-
-      radiusCircle = L.circle([state.destCoords.lat, state.destCoords.lng], {
+      radiusCircle = new google.maps.Circle({
+        map,
+        center: { lat: state.destCoords.lat, lng: state.destCoords.lng },
         radius: state.searchRadiusKm * 1000,
-        color: '#16a34a',
-        weight: 2,
-        dashArray: '6, 6',
+        strokeColor: '#16a34a',
+        strokeOpacity: 0.9,
+        strokeWeight: 2,
         fillColor: '#22c55e',
         fillOpacity: 0.08
-      }).addTo(map);
-
-      map.fitBounds(radiusCircle.getBounds(), { padding: [25, 25], maxZoom: 16 });
+      });
+      map.fitBounds(radiusCircle.getBounds());
     } catch (e) {
       console.warn('Map radius render err:', e);
     }
@@ -554,32 +455,14 @@
     const found = PRESET_DESTINATIONS.find(d => q.includes(d.key) || d.name.toLowerCase().includes(q));
     if (found) return found;
 
-    // 1. Backend geocoder — Google Geocoding API when key present, OSM Nominatim fallback
+    // Backend /api/geocode — Google Geocoding API (no fallback providers)
     try {
       const g = await api(`/api/geocode?q=${encodeURIComponent(query)}`);
       if (g && typeof g.lat === 'number' && typeof g.lng === 'number') {
         return { name: g.name, lat: g.lat, lng: g.lng, geocodeSource: g.source };
       }
     } catch {}
-
-    // 2. Client-side Nominatim fallback (fully offline / edge mode)
-    try {
-      const resp = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=1`, {
-        headers: { 'Accept': 'application/json' },
-        signal: AbortSignal.timeout(2500)
-      });
-      if (resp.ok) {
-        const data = await resp.json();
-        if (data && data[0]) {
-          return {
-            name: data[0].display_name.split(',').slice(0, 2).join(','),
-            lat: parseFloat(data[0].lat),
-            lng: parseFloat(data[0].lon)
-          };
-        }
-      }
-    } catch {}
-    return { name: query, lat: state.destCoords.lat, lng: state.destCoords.lng };
+    return null; // unresolvable without the Google geocoder
   }
 
   // ---------- Google Maps key resolution ----------
@@ -635,16 +518,20 @@
     });
   }
 
-  // Invalid/rejected key → silently drop to Leaflet/OSM so the map always works
-  function fallbackToLeaflet(reason) {
-    if (state.provider === 'leaflet' || state.provider === 'leaflet-pending') return;
-    console.warn('Google Maps unavailable, falling back to Leaflet:', reason);
-    try { const el = $('map'); if (el) el.innerHTML = ''; } catch {}
-    map = null; markers = {}; youMarker = null; accuracyCircle = null; destMarker = null; radiusCircle = null;
-    state.mapReady = false; state.provider = null;
-    initLeaflet();
+  // Invalid/rejected key → explicit notice (no fallback map provider)
+  function gmapsAuthFailed() {
+    if (state.provider === 'google') {
+      console.warn('Google Maps auth failure');
+      try { const el = $('map'); if (el) el.innerHTML = ''; } catch {}
+      map = null; markers = {}; youMarker = null; accuracyCircle = null; destMarker = null; radiusCircle = null;
+      state.mapReady = false; state.provider = null;
+    }
+    showGmapsNotice(
+      'Google Maps key rejected',
+      'The key failed authorization. Check that <strong>Maps JavaScript API</strong> is enabled and this domain is in the key’s HTTP-referrer list. See <code>docs/GOOGLE_MAPS_KEY.md</code>.'
+    );
   }
-  window.gm_authFailure = () => fallbackToLeaflet('auth-failure');
+  window.gm_authFailure = () => gmapsAuthFailed();
 
   function initGoogleMap() {
     map = new google.maps.Map($('map'), {
@@ -670,72 +557,26 @@
   async function initMap() {
     gmapsKey = await resolveGmapsKey();
     state.gmapsKey = gmapsKey;
-    if (gmapsKey) {
-      try {
-        await loadGoogleMapsScript(gmapsKey);
-        if (window.google && window.google.maps) {
-          initGoogleMap();
-          return;
-        }
-      } catch (e) {
-        console.warn('Google Maps failed to load, using Leaflet:', e);
-      }
+    if (!gmapsKey) {
+      showGmapsNotice(
+        'Google Maps API key required',
+        'Set <code>GOOGLE_MAPS_API_KEY</code> in the backend environment (or open with <code>?gmaps_key=YOUR_KEY</code>) to enable the real map and live Google parking data. Setup guide: <code>docs/GOOGLE_MAPS_KEY.md</code>.'
+      );
+      return;
     }
-    await initLeaflet();
-  }
-
-  async function initLeaflet() {
     try {
-      if (!window.L) {
-        const l = document.createElement('link');
-        l.rel = 'stylesheet'; l.href = LEAFLET_CSS;
-        document.head.appendChild(l);
-        await new Promise((resolve, reject) => {
-          const s = document.createElement('script');
-          s.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
-          s.onload = resolve; s.onerror = reject;
-          document.head.appendChild(s);
-        });
+      await loadGoogleMapsScript(gmapsKey);
+      if (window.google && window.google.maps) {
+        initGoogleMap();
+        return;
       }
-      map = L.map('map', {
-        zoomControl: true,
-        fadeAnimation: true
-      }).setView([state.destCoords.lat, state.destCoords.lng], DEFAULT_ZOOM);
-
-      // CartoDB Voyager tiles — ultra-fast, high availability, zero Brave Shield or CORS blocks
-      const voyagerLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
-        subdomains: 'abcd',
-        maxZoom: 20
-      });
-
-      // OSM backup layer in case of connection drop
-      const osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '&copy; OpenStreetMap contributors',
-        subdomains: 'abc',
-        maxZoom: 19
-      });
-
-      voyagerLayer.addTo(map);
-
-      voyagerLayer.on('tileerror', function() {
-        if (!map.hasLayer(osmLayer)) {
-          osmLayer.addTo(map);
-        }
-      });
-
-      state.provider = 'leaflet';
-      state.mapReady = true;
-
-      setTimeout(() => {
-        if (map) map.invalidateSize();
-      }, 150);
-
-      if (state.userLocation) placeYouMarker(state.userLocation);
-      renderDestinationRadiusOnMap();
     } catch (e) {
-      console.warn('Leaflet initialization fallback:', e);
+      console.warn('Google Maps failed to load:', e);
     }
+    showGmapsNotice(
+      'Google Maps failed to load',
+      'The Maps script could not be fetched. Check the network and that the key is valid. See <code>docs/GOOGLE_MAPS_KEY.md</code>.'
+    );
   }
 
   function syncMarkers(current) {
@@ -750,30 +591,17 @@
       const p = current[z.id] != null ? current[z.id] : (z.current ? z.current.probability : 0.5);
       const pct = Math.round(p * 100);
       const color = HEX[statusOf(p)];
-      if (state.provider === 'google') {
-        if (!markers[z.id]) {
-          const m = new google.maps.AdvancedMarkerElement({
-            map,
-            position: { lat: z.center.lat, lng: z.center.lng },
-            content: pillContentNode(z, pct, color),
-            title: z.name
-          });
-          m.addListener('click', () => selectZone(z.id));
-          markers[z.id] = m;
-        } else {
-          markers[z.id].content = pillContentNode(z, pct, color);
-        }
-        return;
-      }
       if (!markers[z.id]) {
-        const m = L.marker([z.center.lat, z.center.lng], {
-          icon: L.divIcon({ html: pillHtml(z, pct, color), className: '', iconSize: null }),
+        const m = new google.maps.AdvancedMarkerElement({
+          map,
+          position: { lat: z.center.lat, lng: z.center.lng },
+          content: pillContentNode(z, pct, color),
           title: z.name
-        }).addTo(map);
-        m.on('click', () => selectZone(z.id));
+        });
+        m.addListener('click', () => selectZone(z.id));
         markers[z.id] = m;
       } else {
-        markers[z.id].setIcon(L.divIcon({ html: pillHtml(z, pct, color), className: '', iconSize: null }));
+        markers[z.id].content = pillContentNode(z, pct, color);
       }
     });
   }
@@ -781,59 +609,43 @@
   function centerMap(lat, lng, zoom) {
     if (!state.mapReady || !map) return;
     try {
-      if (state.provider === 'google') {
-        map.setCenter({ lat, lng });
-        if (zoom) map.setZoom(zoom);
-      } else {
-        map.setView([lat, lng], zoom);
-      }
+      map.setCenter({ lat, lng });
+      if (zoom) map.setZoom(zoom);
     } catch {}
   }
 
   function placeYouMarker(loc) {
     if (!state.mapReady || !map) return;
     try {
-      if (state.provider === 'google') {
-        if (!youMarker) {
-          youMarker = new google.maps.Circle({
+      if (!youMarker) {
+        youMarker = new google.maps.Circle({
+          map,
+          center: { lat: loc.lat, lng: loc.lng },
+          radius: 9,
+          strokeColor: '#ffffff',
+          strokeWeight: 3,
+          fillColor: '#2563eb',
+          fillOpacity: 1
+        });
+      } else {
+        youMarker.setCenter({ lat: loc.lat, lng: loc.lng });
+      }
+      if (loc.accuracy && isFinite(loc.accuracy)) {
+        if (!accuracyCircle) {
+          accuracyCircle = new google.maps.Circle({
             map,
             center: { lat: loc.lat, lng: loc.lng },
-            radius: 9,
-            strokeColor: '#ffffff',
-            strokeWeight: 3,
+            radius: Math.min(loc.accuracy, 2000),
+            strokeColor: '#2563eb',
+            strokeOpacity: 0.4,
+            strokeWeight: 1,
             fillColor: '#2563eb',
-            fillOpacity: 1
+            fillOpacity: 0.15
           });
         } else {
-          youMarker.setCenter({ lat: loc.lat, lng: loc.lng });
+          accuracyCircle.setCenter({ lat: loc.lat, lng: loc.lng });
+          accuracyCircle.setRadius(Math.min(loc.accuracy, 2000));
         }
-        if (loc.accuracy && isFinite(loc.accuracy)) {
-          if (!accuracyCircle) {
-            accuracyCircle = new google.maps.Circle({
-              map,
-              center: { lat: loc.lat, lng: loc.lng },
-              radius: Math.min(loc.accuracy, 2000),
-              strokeColor: '#2563eb',
-              strokeOpacity: 0.4,
-              strokeWeight: 1,
-              fillColor: '#2563eb',
-              fillOpacity: 0.15
-            });
-          } else {
-            accuracyCircle.setCenter({ lat: loc.lat, lng: loc.lng });
-            accuracyCircle.setRadius(Math.min(loc.accuracy, 2000));
-          }
-        }
-        return;
-      }
-      if (!youMarker) {
-        youMarker = L.circleMarker([loc.lat, loc.lng], { radius: 9, color: '#fff', weight: 3, fillColor: '#2563eb', fillOpacity: 1 }).addTo(map);
-        youMarker.bindTooltip('You are here');
-      } else youMarker.setLatLng([loc.lat, loc.lng]);
-      if (loc.accuracy && isFinite(loc.accuracy)) {
-        if (!accuracyCircle) accuracyCircle = L.circle([loc.lat, loc.lng], { color: '#2563eb', weight: 1, opacity: 0.4, fillColor: '#2563eb', fillOpacity: 0.15 }).addTo(map);
-        accuracyCircle.setLatLng([loc.lat, loc.lng]);
-        accuracyCircle.setRadius(Math.min(loc.accuracy, 2000));
       }
     } catch {}
   }
@@ -868,17 +680,6 @@
             renderDestinationRadiusOnMap();
             await refreshForecastBoard();
             await refreshReco();
-
-            // Resolve geocoded name in background — does NOT block UI
-            fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${loc.lat}&lon=${loc.lng}&zoom=14`, {
-              signal: AbortSignal.timeout(2000)
-            }).then(rev => rev.ok ? rev.json() : null).then(data => {
-              if (!data) return;
-              const friendly = (data.address && (data.address.suburb || data.address.neighbourhood || data.address.city || data.address.town || data.address.county)) || data.name || defaultLocName;
-              state.destination = friendly;
-              if ($('dest-search-input')) $('dest-search-input').value = friendly;
-              if ($('zones-radius-badge')) $('zones-radius-badge').textContent = `within ${state.searchRadiusKm.toFixed(1)} km of ${shortName(friendly)}`;
-            }).catch(() => {});
           }
           resolve();
         },
@@ -1057,6 +858,13 @@
 
     try {
       const resolved = await resolveDestination(q);
+      if (!resolved) {
+        if (btn) btn.innerHTML = '<span class="material-symbols-outlined text-[18px]">error</span> Not found';
+        setTimeout(() => {
+          if (btn) btn.innerHTML = '<span class="material-symbols-outlined text-[18px]">near_me</span> Find Parking';
+        }, 1600);
+        return;
+      }
       state.destination = resolved.name;
       state.destCoords = { lat: resolved.lat, lng: resolved.lng };
       if ($('dest-search-input')) $('dest-search-input').value = resolved.name.split(',')[0];
@@ -1092,16 +900,14 @@
   }
 
   // ---------- Fetch Zones (Live or Edge) ----------
-  // Render edge-generated zones from seed or contextual generator — zero network latency
+  // Instant paint for the Berkeley pilot dataset; global destinations wait for live Google data
   function applyEdgeZones() {
     state.engineMode = 'edge';
     state.apiOk = true;
     showApiError(false);
 
     const isBerkeley = isWithinRadius(state.destCoords.lat, state.destCoords.lng, 37.8715, -122.273, 18);
-    const raw = isBerkeley ? SEED_ZONES : clientGenerateContextualParking(
-      state.destCoords.lat, state.destCoords.lng, state.searchRadiusKm, state.destination
-    );
+    const raw = isBerkeley ? SEED_ZONES : [];
 
     state.zones = raw.map(z => {
       const prob = clientBaseProbability(z, new Date());
@@ -1142,15 +948,13 @@
 
     // INSTANT FIRST PAINT: Render edge zones immediately — user sees data in <100ms
     applyEdgeZones();
-    updateHeaderBadges();
     _syncZoneSelect();
 
     // Background live upgrade: silently fetch live API and refresh if successful
     // No await — this happens in parallel so the UI is never blocked
     api(url).then(data => {
-      if (data && Array.isArray(data.zones) && data.zones.length > 0) {
+      if (data && Array.isArray(data.zones)) {
         applyLiveZones(data);
-        updateHeaderBadges();
         _syncZoneSelect();
         // Quietly refresh forecast and recommendation boards with live data
         Promise.all([refreshForecastBoard(), refreshReco(), renderDestinationRadiusOnMap()]).catch(() => {});
@@ -1489,13 +1293,6 @@
 
   $('mongo-feed-refresh-btn')?.addEventListener('click', syncMongoFeed);
 
-  // Data Saver Toggle
-  $('data-saver-btn')?.addEventListener('click', () => {
-    state.dataSaver = !state.dataSaver;
-    try { localStorage.setItem('ps_data_saver', String(state.dataSaver)); } catch {}
-    updateHeaderBadges();
-  });
-
   $('report-found')?.addEventListener('click', () => report('found'));
   $('report-full')?.addEventListener('click', () => report('full'));
   $('report-circling')?.addEventListener('click', () => report('circling'));
@@ -1534,19 +1331,17 @@
     syncMongoFeed
   };
 
-  // Periodic low-bandwidth sync (disabled when Data Saver is on)
+  // Periodic low-bandwidth sync
   setInterval(() => {
-    if (!state.dataSaver && state.engineMode === 'live') {
+    if (state.engineMode === 'live') {
       flushQueuedReports();
     }
   }, 30000);
 
   // Initialize
   renderPoints();
-  updateHeaderBadges();
   showView('view-forecast');
-  // Map: Google Maps when a key is available (URL param / localStorage / config.js / backend env),
-  // automatically falling back to free Leaflet + OpenStreetMap otherwise.
+  // Map: Google Maps only — requires GOOGLE_MAPS_API_KEY (shows setup notice when missing)
   initMap();
   // 1. Boot IMMEDIATELY with edge zones (no network wait) so user sees data in <100ms
   boot();
