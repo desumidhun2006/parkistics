@@ -51,3 +51,4 @@ Execution Frequency: This entire 4-step protocol must be repeated for every sing
 
 
 
+| 47608c4 | Deployed Parkistics to Vercel — public URL **https://parkistics-deploy.vercel.app** (alias of parkistics-deploy-oon5f3iyt-desu-midhun.vercel.app). Serverless entry `api/index.js` re-exports the Express app; vercel.json routes all traffic to it, bundles `frontend/**` via includeFiles, serves static through Express, outputDirectory=backend. Build 14s, all routes verified live: `/`=200 (HTML), `/app.js`=200, `/health`=200, `/api/zones`=200 (24 zones), `/api/config`=200, `/api/geocode`=404 (expected, no key set). Requires GOOGLE_MAPS_API_KEY env var for Google-only map + real parking dataset. |
