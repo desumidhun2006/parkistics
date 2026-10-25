@@ -1,16 +1,15 @@
 {
   "version": 2,
-  "public": true,
   "buildCommand": "cd backend && npm install",
   "framework": null,
   "functions": {
-    "backend/src/index.js": {
+    "api/index.js": {
       "maxDuration": 60,
       "includeFiles": "frontend/**"
     }
   },
   "rewrites": [
-    { "source": "/(.*)", "destination": "/backend/src/index.js" }
+    { "source": "/(.*)", "destination": "/api/index.js" }
   ],
   "headers": [
     {
