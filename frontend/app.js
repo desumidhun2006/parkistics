@@ -702,25 +702,25 @@
         fadeAnimation: true
       }).setView([state.destCoords.lat, state.destCoords.lng], DEFAULT_ZOOM);
 
-      // CartoDB Voyager tiles — ultra-fast, high availability, zero Brave Shield or CORS blocks
-      const voyagerLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
-        subdomains: 'abcd',
-        maxZoom: 20
-      });
-
-      // OSM backup layer in case of connection drop
+      // Free OpenStreetMap tiles — no API key, no watermark
       const osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '&copy; OpenStreetMap contributors',
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
         subdomains: 'abc',
         maxZoom: 19
       });
 
-      voyagerLayer.addTo(map);
+      // CartoDB Voyager backup layer in case OSM is rate-limited or blocked
+      const voyagerLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+        attribution: '&copy; OpenStreetMap contributors &copy; CARTO',
+        subdomains: 'abcd',
+        maxZoom: 20
+      });
 
-      voyagerLayer.on('tileerror', function() {
-        if (!map.hasLayer(osmLayer)) {
-          osmLayer.addTo(map);
+      osmLayer.addTo(map);
+
+      osmLayer.on('tileerror', function() {
+        if (!map.hasLayer(voyagerLayer)) {
+          voyagerLayer.addTo(map);
         }
       });
 
