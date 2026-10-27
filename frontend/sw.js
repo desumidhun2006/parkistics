@@ -1,7 +1,7 @@
-// Parkistics Service Worker v3 — Reliable PWA Cache
+// Parkistics Service Worker v4 — Reliable PWA Cache
 // Caches core static assets and APIs safely without interfering with map tiles or CORS.
 
-const CACHE_NAME = 'parkistics-static-v4';
+const CACHE_NAME = 'parkistics-static-v5';
 
 const PRECACHE_ASSETS = [
   '/',
@@ -48,13 +48,34 @@ self.addEventListener('fetch', (event) => {
     return; // Pass through to browser default network stack
   }
 
-  // 2. Static first-party assets (HTML, CSS, JS, manifest) — Stale-While-Revalidate
+  // 2. Navigations & HTML — Network First (fresh deploys show immediately), cache fallback for offline
+  if (
+    url.origin === self.location.origin &&
+    (url.pathname === '/' || url.pathname.endsWith('.html'))
+  ) {
+    event.respondWith(
+      fetch(event.request).then((networkRes) => {
+        if (networkRes.ok) {
+          const clone = networkRes.clone();
+          caches.open(CACHE_NAME).then(cache => cache.put(event.request, clone));
+        }
+        return networkRes;
+      }).catch(() =>
+        caches.open(CACHE_NAME).then(cache =>
+          cache.match(event.request).then(cached =>
+            cached || new Response('<h1>Offline</h1>', { headers: { 'Content-Type': 'text/html' } })
+          )
+        )
+      )
+    );
+    return;
+  }
+
+  // 3. Static first-party assets (JS, CSS, manifest) — Stale-While-Revalidate
   if (
     url.origin === self.location.origin &&
     (url.pathname.endsWith('.js') ||
       url.pathname.endsWith('.css') ||
-      url.pathname.endsWith('.html') ||
-      url.pathname === '/' ||
       url.pathname.endsWith('.json'))
   ) {
     event.respondWith(
@@ -73,7 +94,7 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // 3. API Requests — Network First with fallback
+  // 4. API Requests — Network First with fallback
   if (url.pathname.startsWith('/api')) {
     event.respondWith(
       fetch(event.request).catch(async () => {
