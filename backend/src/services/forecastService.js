@@ -1,10 +1,26 @@
-// v0 transparent forecaster — rule-based placeholder for LightGBM/LSTM.
-// Encodes patterns like "mall full weekdays 17-19, empties after 20" +
-// traffic-congestion proxy correlation. Returns probability + confidence.
+// v0 transparent forecaster — rule-based prior blended with observed 7-day MongoDB
+// feed history (day-of-week averages). Encodes patterns like "mall full weekdays 17-19"
+// + traffic-congestion proxy + real rolling-window history. Returns probability + confidence.
 const { seedZones } = require('../data/seedZones');
 
 // In-memory crowd adjustments: zoneId -> score (-1..1). Positive = more availability reported.
 const crowdAdjust = new Map();
+
+// 7-day rolling feed history bias: zoneId -> { 0..6: avgProbability } (0=Sunday).
+// Fed by feedService via setHistoryBias after every daily sync/init. Null = rules only.
+let historyBias = null;
+
+function setHistoryBias(bias) {
+  historyBias = bias && bias.size ? bias : null;
+}
+
+function historyProbabilityFor(zone, date) {
+  if (!historyBias) return null;
+  const zoneBias = historyBias.get(zone.id);
+  if (!zoneBias) return null;
+  const dowAvg = zoneBias[date.getDay()];
+  return typeof dowAvg === 'number' ? dowAvg : null;
+}
 
 function addCrowdSignal(zoneId, signal) {
   const delta = signal === 'found' ? 0.12 : signal === 'full' ? -0.15 : signal === 'circling' ? -0.08 : 0;
@@ -97,14 +113,25 @@ function confidenceFor(zone, date, horizonMin) {
   if (horizonMin > 30) c -= 0.1;
   const reports = Math.abs(crowdAdjust.get(zone.id) || 0);
   c = Math.min(0.92, c + reports);
+  // Observed history for this zone+weekday raises confidence.
+  if (historyProbabilityFor(zone, date) !== null) c = Math.min(0.95, c + 0.08);
   return clamp01(c);
 }
 
 function forecastAt(zone, date) {
   const base = baseProbability(zone, date);
+  const hist = historyProbabilityFor(zone, date);
   const adj = crowdAdjust.get(zone.id) || 0;
-  const probability = clamp01(base + adj);
-  return { probability: Math.round(probability * 100) / 100, base: Math.round(base * 100) / 100, crowdAdj: Math.round(adj * 100) / 100 };
+  // Blend: when 7-day feed history exists for this zone+day-of-week, it carries
+  // 60% weight over the rule-based prior — probabilities track the rolling window.
+  const prior = hist !== null ? clamp01(base * 0.4 + hist * 0.6) : base;
+  const probability = clamp01(prior + adj);
+  return {
+    probability: Math.round(probability * 100) / 100,
+    base: Math.round(base * 100) / 100,
+    crowdAdj: Math.round(adj * 100) / 100,
+    historyAdj: hist !== null ? Math.round((prior - base) * 100) / 100 : 0
+  };
 }
 
 const globalZonesCache = new Map();
@@ -156,6 +183,7 @@ module.exports = {
   currentStatus,
   confidenceFor,
   addCrowdSignal,
+  setHistoryBias,
   seedZones,
   registerGlobalZones,
   getGlobalZone

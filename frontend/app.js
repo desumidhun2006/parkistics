@@ -132,8 +132,6 @@
     destCoords: { lat: 37.8702, lng: -122.2681 },
     searchRadiusKm: 1.0,
     nearbyZones: [],
-    mongoFeed: null,
-    selectedFeedDate: null,
     engineMode: 'live', // 'live' or 'edge'
     dataSaver: false,
     gmapsKey: null
@@ -334,71 +332,6 @@
         source: 'edge-synthesized'
       };
     });
-  }
-
-  // Client-Side 7-Day Feed Generator
-  function clientGenerate7DayFeed() {
-    const days = [];
-    const now = new Date();
-    const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-    const weatherList = ['Clear, 68°F', 'Sunny, 72°F', 'Partly Cloudy, 65°F', 'Overcast, 61°F', 'Breezy, 64°F', 'Clear, 70°F', 'Sunny, 75°F'];
-    const feed = [];
-
-    for (let i = 0; i < 7; i++) {
-      const d = new Date(now.getTime() - i * 24 * 60 * 60 * 1000);
-      const dateStr = d.toISOString().split('T')[0];
-      const dayOfWeek = dayNames[d.getDay()];
-      const weather = weatherList[i % weatherList.length];
-
-      let dayTotalProb = 0;
-      let dayTotalOcc = 0;
-      let dayTurnover = 0;
-      const count = state.zones.length;
-
-      state.zones.forEach((z, zIdx) => {
-        const prob = clientBaseProbability(z, d);
-        const occ = Math.round((1 - prob * 0.9) * 100) / 100;
-        const turnover = Math.round(z.capacity * (occ * 2.2 + 0.5));
-        const avail = Math.max(0, Math.round(z.capacity * prob));
-        dayTotalProb += prob;
-        dayTotalOcc += occ;
-        dayTurnover += turnover;
-
-        feed.push({
-          id: `client-feed-${dateStr}-${z.id}`,
-          dateStr,
-          dayOfWeek,
-          zoneId: z.id,
-          zoneName: z.name,
-          probability: Math.round(prob * 100) / 100,
-          status: statusOf(prob),
-          totalCapacity: z.capacity,
-          availableSpots: avail,
-          turnoverCount: turnover,
-          peakHour: z.peakHours ? z.peakHours.split(',')[0] : '12:00-14:00',
-          summary: `${z.name} experienced ${statusOf(prob)} availability with ~${turnover} vehicle rotations.`
-        });
-      });
-
-      days.push({
-        date: dateStr,
-        dayOfWeek,
-        weather,
-        zoneCount: count,
-        avgProbability: Math.round((dayTotalProb / count) * 100) / 100,
-        avgOccupancyRate: Math.round((dayTotalOcc / count) * 100) / 100,
-        turnoverTotal: dayTurnover
-      });
-    }
-
-    return {
-      success: true,
-      retentionPolicy: '7_days_rolling_only',
-      count: feed.length,
-      daysRequested: 7,
-      dailySummaries: days,
-      feed
-    };
   }
 
   // ---------- View Router ----------
@@ -1175,119 +1108,9 @@
   async function boot() {
     showApiError(false);
     fetchZones();           // Instant — edge renders first, live upgrades async (no await needed)
-    fetchMongoFeed();       // Instant — edge feed renders immediately (no await needed)
     renderDestinationRadiusOnMap();
     await refreshForecastBoard();
     await refreshReco();
-  }
-
-  // ---------- MongoDB 7-Day Rolling Feed (Live or Edge) ----------
-  function fetchMongoFeed() {
-    // INSTANT FIRST PAINT: Render client-generated edge feed immediately
-    state.mongoFeed = clientGenerate7DayFeed();
-    if (!state.selectedFeedDate && state.mongoFeed.dailySummaries.length > 0) {
-      state.selectedFeedDate = state.mongoFeed.dailySummaries[0].date;
-    }
-    renderMongoFeed();
-
-    // Background live upgrade: silently fetch MongoDB feed and refresh if successful
-    api('/api/feed?days=7').then(data => {
-      if (data && data.dailySummaries && data.dailySummaries.length > 0) {
-        state.mongoFeed = data;
-        if (!state.selectedFeedDate) state.selectedFeedDate = data.dailySummaries[0].date;
-        renderMongoFeed();
-      }
-    }).catch(() => {
-      // Edge feed already showing — nothing extra needed
-    });
-  }
-
-  async function syncMongoFeed() {
-    const btn = $('mongo-feed-refresh-btn');
-    if (btn) btn.innerHTML = '<span class="material-symbols-outlined text-[14px] animate-spin">sync</span> Syncing…';
-    try {
-      await api('/api/feed/sync', { method: 'POST', body: '{}' });
-      await fetchMongoFeed();
-    } catch (e) {
-      await fetchMongoFeed();
-    } finally {
-      if (btn) btn.innerHTML = '<span class="material-symbols-outlined text-[14px]">sync</span><span>Sync</span>';
-    }
-  }
-
-  function renderMongoFeed() {
-    if (!state.mongoFeed || !state.mongoFeed.dailySummaries) return;
-    const summaries = state.mongoFeed.dailySummaries;
-    const activeDate = state.selectedFeedDate || (summaries[0] && summaries[0].date);
-
-    const chipsContainer = $('mongo-days-row');
-    if (chipsContainer) {
-      chipsContainer.innerHTML = summaries.map((s, idx) => {
-        const isActive = s.date === activeDate;
-        const isToday = idx === 0;
-        const label = isToday ? `Today (${s.dayOfWeek.slice(0, 3)})` : `${s.dayOfWeek.slice(0, 3)} ${s.date.slice(5)}`;
-        const probPct = Math.round(s.avgProbability * 100);
-        const cls = isActive
-          ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm'
-          : 'bg-white/90 text-slate-700 hover:bg-slate-100 border-slate-200';
-        return `<button type="button" class="mongo-day-chip px-3 py-1.5 rounded-xl border text-[11px] font-bold shrink-0 transition-all flex items-center gap-1.5 ${cls}" data-date="${s.date}">` +
-          `<span>${label}</span>` +
-          `<span class="text-[10px] px-1.5 py-0.2 rounded-full ${isActive ? 'bg-white/20 text-white' : 'bg-emerald-50 text-emerald-700'}">${probPct}%</span>` +
-          `</button>`;
-      }).join('');
-
-      chipsContainer.querySelectorAll('.mongo-day-chip').forEach(chip => {
-        chip.addEventListener('click', () => {
-          state.selectedFeedDate = chip.getAttribute('data-date');
-          renderMongoFeed();
-        });
-      });
-    }
-
-    const currentDay = summaries.find(s => s.date === activeDate) || summaries[0];
-    if (currentDay) {
-      if ($('mongo-day-title')) {
-        $('mongo-day-title').innerHTML = `<strong>${currentDay.dayOfWeek}, ${currentDay.date}</strong> · <span class="text-slate-500 font-normal">${currentDay.weather}</span>`;
-      }
-      if ($('mongo-day-stats')) {
-        const probPct = Math.round(currentDay.avgProbability * 100);
-        const occPct = Math.round(currentDay.avgOccupancyRate * 100);
-        $('mongo-day-stats').innerHTML =
-          `<span>Avg: <strong class="text-emerald-700 font-bold">${probPct}%</strong></span>` +
-          `<span>•</span>` +
-          `<span>Occ: <strong class="text-slate-800 font-bold">${occPct}%</strong></span>` +
-          `<span>•</span>` +
-          `<span>Turnover: <strong class="text-slate-800 font-bold">${currentDay.turnoverTotal.toLocaleString()} cars</strong></span>`;
-      }
-    }
-
-    const cardsContainer = $('mongo-feed-cards');
-    if (cardsContainer) {
-      const dayFeed = state.mongoFeed.feed.filter(f => f.dateStr === activeDate);
-      if (dayFeed.length === 0) {
-        cardsContainer.innerHTML = `<div class="col-span-2 text-center py-4 text-[12px] text-slate-400">No feed recorded for this date.</div>`;
-      } else {
-        cardsContainer.innerHTML = dayFeed.slice(0, 12).map(item => {
-          const probPct = Math.round(item.probability * 100);
-          const color = HEX[item.status] || '#16a34a';
-          return `<div class="p-2.5 rounded-xl bg-white/90 border border-slate-200/80 shadow-xs flex flex-col justify-between gap-1.5 hover:border-slate-300 transition-all">` +
-            `<div class="flex items-start justify-between gap-1.5">` +
-            `<div class="flex flex-col min-w-0">` +
-            `<span class="font-bold text-[12px] text-slate-900 truncate">${item.zoneName}</span>` +
-            `<span class="text-[10px] text-slate-500">${item.peakHour} · ~${item.turnoverCount} vehicles</span>` +
-            `</div>` +
-            `<span class="text-[11px] font-extrabold px-2 py-0.5 rounded-full shrink-0" style="color:${color};background:${color}1a">` +
-            `${probPct}%` +
-            `</span>` +
-            `</div>` +
-            `<div class="flex items-center justify-between text-[10px] text-slate-500 pt-1 border-t border-slate-100">` +
-            `<span>Open: <strong class="text-slate-800 font-semibold">${item.availableSpots} / ${item.totalCapacity}</strong></span>` +
-            `<span class="text-slate-400 truncate max-w-[150px]">${item.summary ? item.summary.split('.')[0] : ''}</span>` +
-            `</div>` +
-            `</div>`;
-        }).join('');
-      }
-    }
   }
 
   // ---------- Zone Detail Sheet ----------
@@ -1487,8 +1310,6 @@
     });
   });
 
-  $('mongo-feed-refresh-btn')?.addEventListener('click', syncMongoFeed);
-
   // Data Saver Toggle
   $('data-saver-btn')?.addEventListener('click', () => {
     state.dataSaver = !state.dataSaver;
@@ -1529,9 +1350,7 @@
     locateMe,
     showView,
     searchDestination,
-    setRadius,
-    fetchMongoFeed,
-    syncMongoFeed
+    setRadius
   };
 
   // Periodic low-bandwidth sync (disabled when Data Saver is on)

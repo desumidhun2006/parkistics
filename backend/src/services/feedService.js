@@ -1,6 +1,6 @@
 const { ParkingFeed } = require('../models/schemas');
 const { seedZones } = require('../data/seedZones');
-const { getGlobalZones } = require('./forecastService');
+const { getGlobalZones, setHistoryBias } = require('./forecastService');
 
 const RETENTION_DAYS = 7;
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
@@ -107,6 +107,42 @@ function synthesizeDailyZoneFeed(zone, date) {
 }
 
 /**
+ * Loads the 7-day rolling feed from MongoDB into the forecaster as a
+ * day-of-week probability bias (zoneId -> { 0..6: avgProbability }).
+ * forecastAt blends this into every probability so predictions track observed history.
+ */
+async function refreshHistoryBias() {
+  try {
+    const cutoff = new Date(Date.now() - RETENTION_MS);
+    const rows = await ParkingFeed.aggregate([
+      { $match: { timestamp: { $gte: cutoff } } },
+      {
+        $group: {
+          _id: { zoneId: '$zoneId', dayOfWeek: '$dayOfWeek' },
+          avgProbability: { $avg: '$probability' },
+          samples: { $sum: 1 }
+        }
+      }
+    ]);
+
+    const bias = new Map();
+    for (const r of rows) {
+      const dow = DAYS_OF_WEEK.indexOf(r._id.dayOfWeek);
+      if (dow < 0 || typeof r.avgProbability !== 'number') continue;
+      if (!bias.has(r._id.zoneId)) bias.set(r._id.zoneId, {});
+      bias.get(r._id.zoneId)[dow] = parseFloat(r.avgProbability.toFixed(3));
+    }
+
+    setHistoryBias(bias);
+    console.log(`[Forecast History] Loaded 7-day day-of-week bias for ${bias.size} zone(s) from ${rows.length} aggregate row(s).`);
+    return bias.size;
+  } catch (err) {
+    console.error('[Forecast History] Failed to refresh history bias:', err.message);
+    return 0;
+  }
+}
+
+/**
  * Updates / records daily parking feed for today (or a specific date) in MongoDB.
  * Enforces that only the recent 7 days are stored.
  */
@@ -135,6 +171,9 @@ async function updateDailyParkingFeed(targetDate = new Date()) {
 
   // Prune any entries older than 7 days
   const prunedCount = await pruneOldFeed();
+
+  // Push updated 7-day history into the forecaster so probabilities track observed data
+  await refreshHistoryBias();
 
   console.log(`[MongoDB Feed Update] Synchronized daily feed for ${dateStr}: ${operations.length} zones updated, ${prunedCount} old records pruned.`);
   return { date: dateStr, updatedZones: operations.length, pruned: prunedCount };
@@ -178,6 +217,9 @@ async function initializePastWeekFeedIfEmpty() {
 
     // Always run prune to ensure strict 7-day retention
     await pruneOldFeed();
+
+    // Load the 7-day history into the forecaster so probabilities are data-driven
+    await refreshHistoryBias();
   } catch (err) {
     console.error('[MongoDB Feed] Error during initial feed setup:', err.message);
   }
@@ -343,6 +385,7 @@ module.exports = {
   getPastWeekParkingFeed,
   updateDailyParkingFeed,
   initializePastWeekFeedIfEmpty,
+  refreshHistoryBias,
   pruneOldFeed,
   get7DayFeedStats,
   startDailyFeedScheduler,
