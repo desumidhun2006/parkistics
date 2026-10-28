@@ -22,7 +22,7 @@
   const LEAFLET_CSS = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
   const WALK_OPTIONS = [5, 8, 12, 15];
 
-  const HEX = { high: '#22c55e', medium: '#f7bf1e', low: '#ffb4ab' };
+  const HEX = { high: '#16a34a', medium: '#d97706', low: '#dc2626' };
 
   // Canonical Seed Zones for Offline & Pilot Berkeley Area
   const SEED_ZONES = [
@@ -134,7 +134,13 @@
     nearbyZones: [],
     engineMode: 'live', // 'live' or 'edge'
     dataSaver: false,
-    gmapsKey: null
+    gmapsKey: null,
+    recoBest: null,
+    zoneConf: {},
+    lastUpdatedAt: null,
+    filters: { kind: 'all' },
+    sortBy: 'distance',
+    viewMode: 'map'
   };
 
   const $ = (id) => document.getElementById(id);
@@ -850,6 +856,7 @@
           const f = await api(`/api/zones/${z.id}/forecast?arrival=${encodeURIComponent(arrivalISO)}`);
           const pt = f.series.find(s => s.horizonMin === 0) || f.series[0];
           current[z.id] = pt.probability;
+          if (typeof pt.confidence === 'number') state.zoneConf[z.id] = pt.confidence;
           setCachedForecast(z.id, state.horizonMin, pt.probability);
           return;
         } catch {}
@@ -872,20 +879,27 @@
     const nearby = state.zones.filter(z => isWithinRadius(state.destCoords.lat, state.destCoords.lng, z.center.lat, z.center.lng, state.searchRadiusKm));
     nearby.sort((a, b) => a.distKm - b.distKm);
     state.nearbyZones = nearby;
+    nearby.forEach(z => { if (current[z.id] != null) z._p = current[z.id]; });
+    state.lastUpdatedAt = Date.now();
 
     if ($('zones-count-label')) $('zones-count-label').textContent = `Nearby Parking (${nearby.length})`;
     if ($('zones-radius-badge')) $('zones-radius-badge').textContent = `within ${state.searchRadiusKm.toFixed(1)} km of ${shortName(state.destination)}`;
+
+    // Filter + sort for cards / chips / bento
+    let display = nearby.slice();
+    if (state.filters.kind !== 'all') display = display.filter(z => z.kind === state.filters.kind);
+    display = sortZones(display);
 
     // Render horizontal zone markers
     const wrap = $('zone-buttons');
     if (wrap) {
       wrap.innerHTML = '';
-      const displayZones = nearby.length > 0 ? nearby : state.zones;
+      const displayZones = display.length > 0 ? display : (nearby.length > 0 ? nearby : state.zones);
       displayZones.forEach(z => {
         const p = current[z.id] != null ? current[z.id] : 0.5;
         const b = document.createElement('button');
         b.type = 'button';
-        b.className = 'flex items-center gap-2 px-3 py-2 rounded-xl bg-surface-container shrink-0 text-left hover:bg-surface-container-high active:scale-95 transition-all shadow-sm cursor-pointer';
+        b.className = 'flex items-center gap-2 px-3 py-2 rounded-xl bg-surface-container shrink-0 text-left hover:bg-surface-container-high active:scale-95 transition-all shadow-sm cursor-pointer border border-slate-200/80';
         b.setAttribute('data-testid', `zone-marker-${z.id}`);
         b.innerHTML = chipHtml(z, Math.round(p * 100), HEX[statusOf(p)]);
         b.addEventListener('click', () => selectZone(z.id));
@@ -896,15 +910,20 @@
     // Render Nearby Parking Cards
     const cardsWrap = $('nearby-cards');
     if (cardsWrap) {
-      if (nearby.length === 0) {
+      if (display.length === 0) {
+        const filtered = nearby.length > 0;
         cardsWrap.innerHTML = `<div class="col-span-full p-5 rounded-2xl bg-surface-container border border-slate-200/80 text-center flex flex-col items-center gap-2">` +
-          `<span class="material-symbols-outlined text-slate-400 text-[28px]">location_off</span>` +
-          `<span class="text-[13px] text-on-surface font-semibold">No parking zones within <strong>${state.searchRadiusKm.toFixed(1)} km</strong> of ${state.destination}.</span>` +
-          `<span class="text-[12px] text-on-surface-variant">Try expanding your search radius to find nearby parking.</span>` +
-          `<button type="button" onclick="window.__parkistics.setRadius(2.0)" class="mt-1 px-4 py-1.5 rounded-xl bg-primary text-white text-[12px] font-bold shadow-sm hover:bg-emerald-700 cursor-pointer">Expand to 2.0 km</button>` +
+          `<span class="material-symbols-outlined text-slate-400 text-[28px]">${filtered ? 'filter_alt_off' : 'location_off'}</span>` +
+          `<span class="text-[13px] text-on-surface font-semibold">${filtered ? 'No ' + kindFilterLabel(state.filters.kind) + ' within ' : 'No parking zones within '}<strong>${state.searchRadiusKm.toFixed(1)} km</strong> of ${state.destination}.</span>` +
+          `<span class="text-[12px] text-on-surface-variant">${filtered ? 'Clear the filter or expand your radius to see more parking.' : 'Try expanding your search radius to find nearby parking.'}</span>` +
+          `<div class="flex gap-2 mt-1">` +
+          (filtered ? `<button type="button" id="clear-kind-filter" class="px-4 py-1.5 rounded-xl bg-slate-100 text-slate-700 text-[12px] font-bold shadow-sm hover:bg-slate-200 cursor-pointer border border-slate-200">Clear filter</button>` : '') +
+          `<button type="button" onclick="window.__parkistics.setRadius(2.0)" class="px-4 py-1.5 rounded-xl bg-primary text-white text-[12px] font-bold shadow-sm hover:bg-emerald-700 cursor-pointer">Expand to 2.0 km</button>` +
+          `</div>` +
           `</div>`;
+        $('clear-kind-filter')?.addEventListener('click', () => setKindFilter('all'));
       } else {
-        cardsWrap.innerHTML = nearby.map(z => {
+        cardsWrap.innerHTML = display.map(z => {
           const p = current[z.id] != null ? current[z.id] : (z.current ? z.current.probability : 0.5);
           const pct = Math.round(p * 100);
           const st = statusOf(p);
@@ -912,12 +931,12 @@
           const stLabel = st === 'high' ? 'High Chance' : st === 'medium' ? 'Medium' : 'Congested';
           const avail = Math.max(0, Math.round(z.capacity * p));
           const distStr = z.distanceMeters < 1000 ? `${z.distanceMeters}m away` : `${z.distKm} km away`;
-          return `<article class="p-3.5 rounded-xl bg-surface-container hover:bg-surface-container-high border border-slate-200/80 shadow-sm hover:shadow-md transition-all flex flex-col justify-between gap-2.5 cursor-pointer text-left group" data-zone-id="${z.id}" onclick="window.__parkistics.selectZone('${z.id}')">` +
+          return `<article class="p-3.5 rounded-2xl bg-surface-container hover:bg-slate-50 border border-slate-200/80 shadow-sm hover:shadow-md transition-all flex flex-col justify-between gap-2.5 cursor-pointer text-left group" data-zone-id="${z.id}" onclick="window.__parkistics.selectZone('${z.id}')">` +
             `<div class="flex items-start justify-between gap-2">` +
             `<div class="flex flex-col min-w-0">` +
             `<div class="flex items-center gap-1.5 flex-wrap">` +
             `<span class="font-bold text-[14px] text-on-surface truncate group-hover:text-primary transition-colors">${z.name}</span>` +
-            `<span class="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">${kindLabel(z.kind)}</span>` +
+            `<span class="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200">${kindLabel(z.kind)}</span>` +
             `</div>` +
             `<div class="flex items-center gap-1.5 text-[12px] text-on-surface-variant mt-1 flex-wrap">` +
             `<span class="font-bold text-primary">📍 ${distStr}</span>` +
@@ -927,11 +946,11 @@
             `<span class="font-semibold text-on-surface">${z.pricePerHour > 0 ? `$${z.pricePerHour}/hr` : 'Free'}</span>` +
             `</div>` +
             `</div>` +
-            `<span class="px-2.5 py-1 rounded-full text-[12px] font-extrabold shrink-0" style="color:${color};background:${color}22">` +
+            `<span class="px-2.5 py-1 rounded-full text-[12px] font-extrabold shrink-0" style="color:${color};background:${color}18">` +
             `${pct}% ${stLabel}` +
             `</span>` +
             `</div>` +
-            `<div class="flex items-center justify-between pt-2 border-t border-slate-200/50 text-[11px] text-on-surface-variant">` +
+            `<div class="flex items-center justify-between pt-2 border-t border-slate-200/60 text-[11px] text-on-surface-variant">` +
             `<span>Availability: <strong class="text-on-surface font-bold">~${avail} / ${z.capacity} spots</strong></span>` +
             `<span class="text-primary font-bold group-hover:underline flex items-center gap-0.5">Forecast & Details →</span>` +
             `</div>` +
@@ -941,12 +960,14 @@
     }
 
     if ($('slider-val-label')) $('slider-val-label').textContent = `+${state.horizonMin} min`;
+    if ($('model-pill-text')) $('model-pill-text').textContent = `+${state.horizonMin} min`;
     document.querySelectorAll('#slider-steps [data-h]').forEach(el => {
       const active = parseInt(el.getAttribute('data-h'), 10) === state.horizonMin;
       el.classList.toggle('font-bold', active);
       el.classList.toggle('text-primary', active);
     });
     syncMarkers(current);
+    renderBento(display);
   }
 
   async function refreshReco() {
@@ -960,10 +981,12 @@
         const data = await api(`/api/route?destination=${encodeURIComponent(dest)}&lat=${lat}&lng=${lng}&radius=${rad}&time=${encodeURIComponent(new Date().toISOString())}`);
         const best = data.ranked[0];
         if (best) {
+          state.recoBest = best;
           if ($('reco-title')) $('reco-title').textContent = `${best.name} Recommended`;
           const distStr = best.distanceKm != null ? `${best.distanceKm < 1 ? Math.round(best.distanceKm * 1000) + 'm' : best.distanceKm + 'km'} away • ` : '';
           if ($('reco-sub')) $('reco-sub').textContent = `${Math.round(best.probability * 100)}% chance • ${distStr}~${best.expectedSearchMin} min search • ${best.walkMinutes} min walk`;
           if ($('reco-route')) $('reco-route').onclick = () => window.open(dirHref(best.center.lat, best.center.lng), '_blank');
+          renderBento();
           return;
         }
       } catch {}
@@ -974,9 +997,157 @@
     if (pool.length > 0) {
       const best = pool[0];
       const p = best.current ? best.current.probability : 0.7;
+      state.recoBest = {
+        zoneId: best.id, name: best.name, center: best.center, kind: best.kind,
+        probability: p, walkMinutes: best.walkMinutes || 5,
+        distanceKm: best.distKm != null ? best.distKm : 0.2,
+        pricePerHour: best.pricePerHour, capacity: best.capacity,
+        availableSpots: Math.max(0, Math.round((best.capacity || 0) * p)),
+        expectedSearchMin: Math.round((1 - p) * 14 + 2)
+      };
       if ($('reco-title')) $('reco-title').textContent = `${best.name} Recommended`;
       if ($('reco-sub')) $('reco-sub').textContent = `${Math.round(p * 100)}% chance • ${best.distKm || 0.2}km away • ~${best.walkMinutes || 3} min walk`;
       if ($('reco-route')) $('reco-route').onclick = () => window.open(dirHref(best.center.lat, best.center.lng), '_blank');
+      renderBento();
+    }
+  }
+
+  // ---------- Bento Panel Rendering ----------
+  function sortZones(list) {
+    const arr = list.slice();
+    const probOf = z => (z._p != null ? z._p : (z.current ? z.current.probability : 0));
+    switch (state.sortBy) {
+      case 'probability': arr.sort((a, b) => probOf(b) - probOf(a)); break;
+      case 'price': arr.sort((a, b) => (a.pricePerHour || 0) - (b.pricePerHour || 0)); break;
+      case 'walk': arr.sort((a, b) => (a.walkMinutes || 0) - (b.walkMinutes || 0)); break;
+      default: arr.sort((a, b) => (a.distKm || 0) - (b.distKm || 0));
+    }
+    return arr;
+  }
+
+  function kindFilterLabel(kind) {
+    return kind === 'lot' ? 'lots' : kind === 'garage' ? 'garages' : kind === 'street' ? 'street blocks' : 'zones';
+  }
+
+  function setKindFilter(kind) {
+    state.filters.kind = kind;
+    document.querySelectorAll('#kind-filters .kind-chip').forEach(chip => {
+      const active = chip.getAttribute('data-kind') === kind;
+      chip.classList.toggle('active', active);
+      chip.classList.toggle('bg-emerald-600', active);
+      chip.classList.toggle('text-white', active);
+      chip.classList.toggle('border-emerald-500', active);
+      chip.classList.toggle('bg-white', !active);
+      chip.classList.toggle('text-slate-600', !active);
+      chip.classList.toggle('border-slate-200', !active);
+    });
+    refreshForecastBoard();
+  }
+
+  function relativeUpdated(ts) {
+    if (!ts) return 'just now';
+    const s = Math.max(0, Math.round((Date.now() - ts) / 1000));
+    if (s < 15) return 'just now';
+    if (s < 60) return `${s}s ago`;
+    const m = Math.round(s / 60);
+    if (m < 60) return `${m}m ago`;
+    return `${Math.round(m / 60)}h ago`;
+  }
+
+  function renderBento(displayList) {
+    const best = state.recoBest;
+    const list = displayList || state.nearbyZones || [];
+
+    if (!best) {
+      if ($('bento-best-name')) $('bento-best-name').textContent = 'Finding best zone…';
+      if ($('bento-best-meta')) $('bento-best-meta').textContent = 'Analyzing nearby parking…';
+      if ($('bento-chance-value')) $('bento-chance-value').textContent = '—';
+      if ($('bento-distance-value')) $('bento-distance-value').textContent = '—';
+      if ($('bento-price-value')) $('bento-price-value').textContent = '—';
+      if ($('bento-conf-value')) $('bento-conf-value').textContent = '—';
+      return;
+    }
+
+    const p = typeof best.probability === 'number' ? best.probability : 0.5;
+    const pct = Math.round(p * 100);
+    const st = statusOf(p);
+    const color = HEX[st];
+    const stLabel = st === 'high' ? 'High Chance' : st === 'medium' ? 'Medium' : 'Congested';
+
+    if ($('bento-best-name')) $('bento-best-name').textContent = best.name;
+    const km = best.distanceKm;
+    const distStr = km == null ? '' : km < 1 ? `${Math.round(km * 1000)} m` : `${km} km`;
+    const availStr = typeof best.availableSpots === 'number' ? `~${best.availableSpots}/${best.capacity || '—'} spots` : '';
+    if ($('bento-best-meta')) $('bento-best-meta').textContent = [kindLabel(best.kind), distStr, availStr].filter(Boolean).join(' · ');
+    const badge = $('bento-best-badge');
+    if (badge) {
+      badge.textContent = `${pct}% ${stLabel}`;
+      badge.style.color = color;
+      badge.style.background = `${color}1a`;
+    }
+
+    if ($('bento-chance-value')) {
+      $('bento-chance-value').textContent = `${pct}%`;
+      $('bento-chance-value').style.color = color;
+    }
+    if ($('bento-chance-label')) $('bento-chance-label').textContent = `${shortName(best.name)} · arrival +${state.horizonMin} min`;
+    if ($('bento-chance-bar')) {
+      $('bento-chance-bar').style.width = `${pct}%`;
+      $('bento-chance-bar').style.background = color;
+    }
+
+    if ($('bento-distance-value')) $('bento-distance-value').textContent = best.walkMinutes != null ? `${best.walkMinutes} min` : '—';
+    if ($('bento-distance-sub')) $('bento-distance-sub').textContent = distStr ? `${distStr} walk to ${shortName(best.name)}` : 'to best option';
+
+    if ($('bento-price-value')) $('bento-price-value').textContent = best.pricePerHour > 0 ? `$${best.pricePerHour}` : 'Free';
+    if ($('bento-price-sub')) $('bento-price-sub').textContent = best.pricePerHour > 0 ? 'per hour · est.' : 'no parking fee';
+
+    const conf = state.zoneConf[best.zoneId];
+    if ($('bento-conf-value')) {
+      $('bento-conf-value').textContent = conf != null ? `${Math.round(conf * 100)}%` : (st === 'high' ? 'High' : st === 'medium' ? 'Medium' : 'Low');
+    }
+    if ($('bento-updated-value')) $('bento-updated-value').textContent = relativeUpdated(state.lastUpdatedAt);
+
+    // Alternatives: top nearby excluding the best zone
+    const altsWrap = $('bento-alts-list');
+    if (altsWrap) {
+      const alts = list.filter(z => z.id !== best.zoneId).slice(0, 4);
+      if (alts.length === 0) {
+        altsWrap.innerHTML = `<p class="font-body-sm text-body-sm text-on-surface-variant py-2">No other zones in range — expand the radius to see alternatives.</p>`;
+      } else {
+        altsWrap.innerHTML = alts.map(z => {
+          const zp = z._p != null ? z._p : (z.current ? z.current.probability : 0.5);
+          const zpct = Math.round(zp * 100);
+          const zc = HEX[statusOf(zp)];
+          const zdist = z.distanceMeters != null ? (z.distanceMeters < 1000 ? `${z.distanceMeters}m` : `${z.distKm}km`) : '';
+          return `<button type="button" class="flex items-center justify-between gap-3 w-full px-3 py-2 rounded-xl bg-slate-50 hover:bg-slate-100 border border-slate-200/80 transition-all text-left cursor-pointer" data-zone-id="${z.id}" onclick="window.__parkistics.selectZone('${z.id}')">` +
+            `<span class="flex flex-col min-w-0">` +
+            `<span class="font-semibold text-[13px] text-on-surface truncate">${z.name}</span>` +
+            `<span class="text-[11px] text-on-surface-variant">${zdist ? zdist + ' · ' : ''}${z.walkMinutes != null ? '~' + z.walkMinutes + ' min walk · ' : ''}${z.pricePerHour > 0 ? '$' + z.pricePerHour + '/hr' : 'Free'}</span>` +
+            `</span>` +
+            `<span class="text-[13px] font-extrabold shrink-0" style="color:${zc}">${zpct}%</span>` +
+            `</button>`;
+        }).join('');
+      }
+    }
+
+    if ($('bento-alts-hint')) $('bento-alts-hint').textContent = `${list.length} zone${list.length === 1 ? '' : 's'} in range`;
+    if ($('bento-updated-hint')) $('bento-updated-hint').textContent = `Updated ${relativeUpdated(state.lastUpdatedAt)}`;
+  }
+
+  function setViewMode(mode) {
+    state.viewMode = mode;
+    const panel = $('map-panel');
+    if (panel) panel.classList.toggle('hidden', mode === 'list');
+    document.querySelectorAll('.view-mode-btn').forEach(btn => {
+      const on = btn.getAttribute('data-mode') === mode;
+      btn.classList.toggle('bg-emerald-600', on);
+      btn.classList.toggle('text-white', on);
+      btn.classList.toggle('text-slate-600', !on);
+      btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+    });
+    if (mode === 'map' && map && typeof map.invalidateSize === 'function') {
+      setTimeout(() => { try { map.invalidateSize(); } catch {} }, 80);
     }
   }
 
@@ -1298,6 +1469,43 @@
       if (r) setRadius(r);
     });
   });
+
+  // Now button — reset arrival to now
+  $('now-btn')?.addEventListener('click', () => {
+    const ts = $('time-slider');
+    if (ts) ts.value = '0';
+    state.horizonMin = 0;
+    refreshForecastBoard();
+    renderBento();
+  });
+
+  // Kind filters
+  document.querySelectorAll('#kind-filters .kind-chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      const k = chip.getAttribute('data-kind');
+      if (k) setKindFilter(k);
+    });
+  });
+
+  // Sort select
+  $('sort-select')?.addEventListener('change', (e) => {
+    state.sortBy = e.target.value || 'distance';
+    refreshForecastBoard();
+  });
+
+  // Map / List view toggle
+  document.querySelectorAll('.view-mode-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const mode = btn.getAttribute('data-mode');
+      if (mode) setViewMode(mode);
+    });
+  });
+
+  // Keep "last updated" freshness live
+  setInterval(() => {
+    if ($('bento-updated-value')) $('bento-updated-value').textContent = relativeUpdated(state.lastUpdatedAt);
+    if ($('bento-updated-hint') && state.lastUpdatedAt) $('bento-updated-hint').textContent = `Updated ${relativeUpdated(state.lastUpdatedAt)}`;
+  }, 15000);
 
   document.querySelectorAll('.dest-preset').forEach(btn => {
     btn.addEventListener('click', () => {

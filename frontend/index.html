@@ -5,38 +5,24 @@
 <meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" name="viewport"/>
 <title>Parkistics — Predictive Parking</title>
 <link rel="manifest" href="./manifest.json"/>
-<meta name="theme-color" content="#0f172a"/>
+<meta name="theme-color" content="#f8fafc"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="default"/>
 <meta name="description" content="Parkistics — Predictive parking availability worldwide. Heavily optimized for time, space, and internet with offline readiness."/>
 <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet"/>
 <link href="https://fonts.googleapis.com" rel="preconnect"/>
 <link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet"/>
-<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
 <style>
 /* ================================================================
-   PARKISTICS — Premium Light Theme & Glassmorphism Design System
-   Specifications:
-     • Single Page   : Dedicated Forecast application (no sidebar/nav tabs).
-     • Light Theme   : Airy, luminous slate-50 background with pastel ambient mesh
-                       gradients and pure white frosted glass panels.
-     • Typography    : Crisp, high-contrast dark slate (#0f172a, #64748b).
-     • Glassmorphism : 20px blur, subtle specular highlights, soft layered shadows.
+   PARKISTICS — Minimal Bento Grid, Light Theme
+   Flat white cards, subtle borders, soft shadows, consistent radius.
+   Status palette: green #16a34a · amber #d97706 · red #dc2626 · gray slate
    ================================================================ */
 
-/* --- Reset & Base --- */
 @layer base {
-  html, body {
-    width: 100vw;
-    margin: 0;
-    padding: 0;
-    color: #0f172a;
-    background-color: #f8fafc;
-  }
-  body {
-    overscroll-behavior: none;
-  }
+  html, body { width: 100vw; margin: 0; padding: 0; color: #0f172a; background-color: #f8fafc; }
+  body { overscroll-behavior: none; }
   .pb-safe { padding-bottom: env(safe-area-inset-bottom, 0px); }
   .pt-safe { padding-top: env(safe-area-inset-top, 0px); }
   main > :first-child { margin-top: 0 !important; }
@@ -46,422 +32,207 @@
 ::-webkit-scrollbar { display: none; }
 * { scrollbar-width: none; scroll-behavior: smooth; }
 input[type=range] { accent-color: #16a34a; }
-#map .leaflet-container { background: #e2e8f0; font: inherit; }
 
-/* ================================================================
-   CANVAS & LIGHT AMBIENT BACKGROUND
-   Soft pastel mesh gradients providing gentle refraction through frosted glass
-   ================================================================ */
 body {
-  background: #f8fafc !important;
-  background-image:
-    /* Soft Sky Blue (top right) */
-    radial-gradient(ellipse 950px 700px at 90% -5%, rgba(186, 230, 253, 0.45) 0%, transparent 62%),
-    /* Soft Mint / Emerald (bottom left) */
-    radial-gradient(ellipse 850px 600px at 5% 95%, rgba(187, 247, 208, 0.40) 0%, transparent 62%),
-    /* Soft Periwinkle / Lavender (center depth) */
-    radial-gradient(ellipse 750px 550px at 52% 48%, rgba(224, 231, 255, 0.40) 0%, transparent 65%),
-    /* Soft Peach / Gold accent (top left) */
-    radial-gradient(ellipse 520px 420px at 12% 14%, rgba(254, 215, 170, 0.35) 0%, transparent 56%),
-    /* Soft Rose (mid right) */
-    radial-gradient(ellipse 560px 440px at 88% 64%, rgba(254, 205, 211, 0.30) 0%, transparent 56%),
-    /* Delicate micro-dot pattern */
-    radial-gradient(rgba(148, 163, 184, 0.14) 1px, transparent 1px) !important;
-  background-size: auto, auto, auto, auto, auto, 24px 24px !important;
-  background-attachment: fixed !important;
+  background:
+    radial-gradient(ellipse 900px 600px at 92% -4%, rgba(186, 230, 253, 0.35) 0%, transparent 60%),
+    radial-gradient(ellipse 800px 560px at 4% 98%, rgba(187, 247, 208, 0.30) 0%, transparent 60%),
+    #f8fafc !important;
   min-height: 100vh;
   overflow-x: hidden;
   color: #0f172a !important;
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
 }
 
-/* Force view wrappers transparent so background shines through */
-main,
-#view-forecast,
-#view-zones,
-.bg-surface:not(header) {
-  background: transparent !important;
-}
+main, #view-forecast, #view-zones { background: transparent !important; }
 
-/* ================================================================
-   PASTEL DRIFTING BLOBS
-   ================================================================ */
-@keyframes blob-drift-1 {
-  0%, 100% { transform: translate(0, 0) scale(1) rotate(0deg); }
-  33%      { transform: translate(50px, -35px) scale(1.06) rotate(8deg); }
-  66%      { transform: translate(-35px, 25px) scale(0.95) rotate(-6deg); }
-}
-@keyframes blob-drift-2 {
-  0%, 100% { transform: translate(0, 0) scale(1); }
-  50%      { transform: translate(-45px, -40px) scale(1.08); }
-}
-@keyframes blob-drift-3 {
-  0%, 100% { transform: translate(-50%, -50%) scale(1); }
-  50%      { transform: translate(-47%, -53%) scale(1.04); }
-}
+/* Typography */
+h1, h2, h3, h4 { color: #0f172a; letter-spacing: -0.015em; margin: 0; }
+.text-on-surface { color: #0f172a !important; }
+.text-on-surface-variant { color: #64748b !important; }
 
-.pk-blob {
-  position: fixed;
-  border-radius: 50%;
-  filter: blur(100px) saturate(1.2);
-  pointer-events: none;
-  z-index: 0;
-  will-change: transform;
-  opacity: 0.38;
-}
-.pk-blob-1 {
-  width: 700px; height: 560px;
-  background: radial-gradient(circle, rgba(186, 230, 253, 0.8) 0%, rgba(191, 219, 254, 0.3) 55%, transparent 75%);
-  top: -100px; right: -80px;
-  animation: blob-drift-1 22s ease-in-out infinite;
-}
-.pk-blob-2 {
-  width: 640px; height: 520px;
-  background: radial-gradient(circle, rgba(254, 205, 211, 0.7) 0%, rgba(254, 215, 170, 0.3) 55%, transparent 75%);
-  bottom: -80px; left: -70px;
-  animation: blob-drift-2 26s ease-in-out infinite reverse;
-}
-.pk-blob-3 {
-  width: 520px; height: 440px;
-  background: radial-gradient(circle, rgba(187, 247, 208, 0.75) 0%, rgba(167, 243, 208, 0.3) 55%, transparent 72%);
-  top: 48%; left: 45%;
-  animation: blob-drift-3 20s ease-in-out infinite;
-}
-.pk-blob-4 {
-  width: 420px; height: 360px;
-  background: radial-gradient(circle, rgba(254, 240, 138, 0.7) 0%, rgba(254, 215, 170, 0.3) 55%, transparent 70%);
-  top: 14%; left: 18%;
-  animation: blob-drift-1 24s ease-in-out infinite -5s;
-}
-.pk-blob-5 {
-  width: 460px; height: 380px;
-  background: radial-gradient(circle, rgba(224, 231, 255, 0.75) 0%, rgba(199, 210, 254, 0.3) 55%, transparent 72%);
-  bottom: 18%; right: 12%;
-  animation: blob-drift-2 28s ease-in-out infinite -9s;
-}
-.pk-blob-6 {
-  width: 380px; height: 320px;
-  background: radial-gradient(circle, rgba(204, 251, 241, 0.7) 0%, rgba(186, 230, 253, 0.3) 55%, transparent 70%);
-  top: 60%; left: 8%;
-  animation: blob-drift-1 30s ease-in-out infinite -12s;
-}
-
-/* ================================================================
-   CRISP LIGHT TYPOGRAPHY
-   ================================================================ */
-html, body {
-  color: #0f172a !important;
-}
-
-h1, h2, h3, h4, h5, h6,
-.font-headline-xl, .font-headline-lg, .font-headline-md,
-.font-metric-lg, .font-metric-sm {
-  color: #0f172a !important;
-  letter-spacing: -0.015em;
-}
-
-.text-on-surface {
-  color: #0f172a !important;
-}
-
-.text-on-surface-variant {
-  color: #64748b !important;
-}
-
-/* ================================================================
-   LIGHT GLASSMORPHISM PANELS
-   ================================================================ */
-
-/* Level 1: Primary Frosted Glass Panel */
-.bg-surface-container,
+/* Bento cards — flat, soft, consistent */
+.bento-card,
 article.result {
-  background: rgba(255, 255, 255, 0.84) !important;
-  backdrop-filter: blur(20px) saturate(180%) !important;
-  -webkit-backdrop-filter: blur(20px) saturate(180%) !important;
-  border: 1px solid rgba(226, 232, 240, 0.90) !important;
-  box-shadow:
-    0 4px 20px -2px rgba(15, 23, 42, 0.05),
-    0 1px 3px rgba(15, 23, 42, 0.03),
-    inset 0 1px 0 rgba(255, 255, 255, 0.95) !important;
+  background: #ffffff !important;
+  border: 1px solid rgba(226, 232, 240, 0.95) !important;
+  border-radius: 1rem !important;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 4px 14px -6px rgba(15, 23, 42, 0.05) !important;
+  transition: box-shadow .2s ease, border-color .2s ease, transform .2s ease !important;
   position: relative;
-  transition: background .25s ease, border-color .25s ease,
-              box-shadow .25s ease, transform .25s cubic-bezier(.34,1.56,.64,1) !important;
 }
-
-/* Delicate Light Glass Rim Mask */
-.bg-surface-container::before,
-article.result::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  padding: 1px;
-  background: linear-gradient(
-    135deg,
-    rgba(255, 255, 255, 0.95) 0%,
-    rgba(226, 232, 240, 0.60) 40%,
-    rgba(203, 213, 225, 0.40) 70%,
-    rgba(255, 255, 255, 0.80) 100%
-  );
-  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-  -webkit-mask-composite: xor;
-  mask-composite: exclude;
-  pointer-events: none;
-  z-index: 1;
-}
-
-/* Hover: Lift & Glow */
-.bg-surface-container:hover,
+.bento-card:hover,
 article.result:hover {
-  background: rgba(255, 255, 255, 0.96) !important;
   border-color: rgba(203, 213, 225, 1) !important;
-  box-shadow:
-    0 12px 32px -4px rgba(15, 23, 42, 0.08),
-    0 4px 6px -1px rgba(15, 23, 42, 0.03),
-    inset 0 1px 0 #ffffff !important;
-  transform: translateY(-2px) !important;
+  box-shadow: 0 2px 4px rgba(15, 23, 42, 0.04), 0 10px 24px -8px rgba(15, 23, 42, 0.08) !important;
 }
 
-/* Level 2: Elevated Elements (Chips, Controls, Badges) */
+/* Surfaces */
+.bg-surface-container {
+  background: #ffffff !important;
+  border: 1px solid rgba(226, 232, 240, 0.95) !important;
+  border-radius: 1rem !important;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 4px 14px -6px rgba(15, 23, 42, 0.05) !important;
+}
 .bg-surface-container-high,
 .bg-surface-container-highest {
-  background: rgba(241, 245, 249, 0.85) !important;
-  backdrop-filter: blur(18px) saturate(160%) !important;
-  -webkit-backdrop-filter: blur(18px) saturate(160%) !important;
-  border: 1px solid rgba(226, 232, 240, 0.90) !important;
-  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04), inset 0 1px 0 rgba(255, 255, 255, 0.8) !important;
+  background: #f1f5f9 !important;
+  border: 1px solid rgba(226, 232, 240, 0.95) !important;
   color: #0f172a !important;
-  transition: background .2s ease, border-color .2s ease, box-shadow .2s ease !important;
 }
+.bg-surface-container-low, .bg-surface-container-lowest { background: #f8fafc !important; }
 
-/* Level 3: Sunken Areas & Lists */
-.bg-surface-container-low {
-  background: rgba(248, 250, 252, 0.85) !important;
-  backdrop-filter: blur(16px) !important;
-  -webkit-backdrop-filter: blur(16px) !important;
-  border: 1px solid rgba(226, 232, 240, 0.80) !important;
-}
-
-.bg-surface-container-lowest {
-  background: #ffffff !important;
-  backdrop-filter: blur(16px) !important;
-  -webkit-backdrop-filter: blur(16px) !important;
-  border: 1px solid rgba(226, 232, 240, 0.85) !important;
-}
-
-/* ================================================================
-   HEADER — Clean Light Frosted Bar (Full-Width)
-   ================================================================ */
+/* Header */
 header {
-  position: sticky !important;
-  top: 0 !important;
-  left: 0 !important;
-  width: 100% !important;
-  background: rgba(255, 255, 255, 0.85) !important;
-  backdrop-filter: blur(20px) saturate(180%) !important;
-  -webkit-backdrop-filter: blur(20px) saturate(180%) !important;
-  border-bottom: 1px solid rgba(226, 232, 240, 0.85) !important;
-  box-shadow: 0 2px 14px rgba(15, 23, 42, 0.04) !important;
+  position: sticky !important; top: 0 !important; width: 100% !important;
+  background: rgba(255, 255, 255, 0.92) !important;
+  backdrop-filter: blur(12px) saturate(160%) !important;
+  -webkit-backdrop-filter: blur(12px) saturate(160%) !important;
+  border-bottom: 1px solid rgba(226, 232, 240, 0.9) !important;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04) !important;
   z-index: 50 !important;
 }
+#api-dot { box-shadow: 0 0 6px rgba(22, 163, 74, 0.6) !important; }
 
-#api-dot {
-  box-shadow: 0 0 6px rgba(22, 163, 74, 0.6) !important;
-}
-
-/* ================================================================
-   MAIN CONTENT CONTAINER — Full-Width Centered
-   ================================================================ */
+/* Main column */
 main {
-  margin-left: 0 !important;
-  padding-bottom: 3rem !important;
   width: 100% !important;
-  max-width: 56rem !important;
-  margin-left: auto !important;
-  margin-right: auto !important;
+  max-width: 64rem !important;
+  margin-left: auto !important; margin-right: auto !important;
+  padding-bottom: 3rem !important;
 }
 
-/* ================================================================
-   MAP — Google Maps (with key) or crisp OpenStreetMap via Leaflet
-   ================================================================ */
-#map {
-  border: 1px solid rgba(203, 213, 225, 0.85) !important;
-  box-shadow: 0 8px 30px rgba(15, 23, 42, 0.07) !important;
-}
-.leaflet-tile {
-  filter: none !important;
-}
+/* Map */
+#map { border: 1px solid rgba(226, 232, 240, 0.95); border-radius: 1rem; background: #e2e8f0; font: inherit; }
+#map .leaflet-container { background: #e2e8f0; font: inherit; }
+.leaflet-tile { filter: none !important; }
 #map gmp-advanced-marker { cursor: pointer; }
 #map .gm-style-iw-c { border-radius: 12px; font-family: Inter, sans-serif; }
 #map .gm-style > div { background: #e2e8f0; }
-
-/* Map buttons */
 #recenter-gps-btn {
-  background: rgba(255, 255, 255, 0.95) !important;
+  background: rgba(255, 255, 255, 0.96) !important;
   border: 1px solid rgba(203, 213, 225, 0.9) !important;
   color: #0f172a !important;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08) !important;
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.1) !important;
 }
-#recenter-gps-btn:hover {
-  background: #ffffff !important;
-  color: #2563eb !important;
-}
+#recenter-gps-btn:hover { background: #ffffff !important; color: #16a34a !important; }
 
-/* ================================================================
-   BUTTONS & INPUTS
-   ================================================================ */
-/* Primary Action Button (Clean emerald) */
-button.bg-primary,
-a.bg-primary-container,
-#reco-route {
+/* Buttons & inputs */
+button.bg-primary, a.bg-primary-container, #reco-route {
   background: linear-gradient(135deg, #16a34a 0%, #15803d 100%) !important;
   color: #ffffff !important;
-  box-shadow: 0 4px 14px rgba(22, 163, 74, 0.30), inset 0 1px 0 rgba(255, 255, 255, 0.25) !important;
-  transition: transform .2s cubic-bezier(.34,1.56,.64,1), box-shadow .2s ease !important;
+  box-shadow: 0 2px 8px rgba(22, 163, 74, 0.28) !important;
 }
-button.bg-primary:hover,
-a.bg-primary-container:hover,
-#reco-route:hover {
-  box-shadow: 0 6px 20px rgba(22, 163, 74, 0.40) !important;
-  transform: translateY(-1px) scale(1.01) !important;
+button.bg-primary:hover, a.bg-primary-container:hover, #reco-route:hover {
+  box-shadow: 0 4px 14px rgba(22, 163, 74, 0.36) !important;
 }
-
-/* Secondary Glass Buttons */
 button.bg-surface-container-high {
-  background: rgba(241, 245, 249, 0.90) !important;
-  border: 1px solid rgba(226, 232, 240, 0.90) !important;
+  background: #f1f5f9 !important;
+  border: 1px solid rgba(226, 232, 240, 0.95) !important;
   color: #0f172a !important;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04) !important;
-  transition: all .2s cubic-bezier(.34,1.56,.64,1) !important;
 }
-button.bg-surface-container-high:hover {
-  background: #ffffff !important;
-  border-color: rgba(203, 213, 225, 1) !important;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06) !important;
-  transform: translateY(-1px) !important;
-}
-
-.bg-surface-container-high.rounded-full {
-  background: rgba(241, 245, 249, 0.90) !important;
-  border: 1px solid rgba(226, 232, 240, 0.90) !important;
-}
-
-/* Inputs & Selects */
-input:not([type=range]):not([type=checkbox]),
-select,
-textarea {
+input:not([type=range]):not([type=checkbox]), select, textarea {
   background: #ffffff !important;
   border: 1px solid #cbd5e1 !important;
   color: #0f172a !important;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03) !important;
-  transition: border-color .2s, box-shadow .2s !important;
 }
-input::placeholder, textarea::placeholder {
-  color: #94a3b8 !important;
-}
-input:not([type=range]):focus,
-select:focus,
-textarea:focus {
+input::placeholder, textarea::placeholder { color: #94a3b8 !important; }
+input:not([type=range]):focus, select:focus, textarea:focus {
   border-color: #16a34a !important;
-  box-shadow: 0 0 0 3px rgba(22, 163, 74, 0.15) !important;
+  box-shadow: 0 0 0 3px rgba(22, 163, 74, 0.14) !important;
   outline: none !important;
 }
 
-/* Range slider in light mode */
-input[type=range] {
-  background: #e2e8f0 !important;
+/* Focus visibility (a11y) */
+:focus-visible {
+  outline: 2px solid #16a34a !important;
+  outline-offset: 2px !important;
+}
+button:focus-visible, a:focus-visible, [data-testid]:focus-visible {
+  outline: 2px solid #16a34a !important;
+  outline-offset: 2px !important;
 }
 
-/* ================================================================
-   SPECIAL PANELS & BANNERS (Light Mode)
-   ================================================================ */
-#reco-card {
-  background: linear-gradient(135deg, rgba(240, 253, 244, 0.95) 0%, rgba(255, 255, 255, 0.95) 100%) !important;
+/* Special panels */
+#reco-card, #bento-best {
+  background: linear-gradient(160deg, rgba(240, 253, 244, 0.9) 0%, #ffffff 55%) !important;
   border: 1px solid rgba(187, 247, 208, 0.9) !important;
-  box-shadow: 0 4px 18px rgba(22, 163, 74, 0.08) !important;
 }
-
-#saved-banner {
-  background: rgba(240, 253, 244, 0.95) !important;
-  border: 1px solid rgba(187, 247, 208, 0.9) !important;
-  box-shadow: 0 4px 16px rgba(22, 163, 74, 0.08) !important;
-}
-
 #location-banner {
-  background: rgba(239, 246, 255, 0.92) !important;
-  border: 1px solid rgba(191, 219, 254, 0.9) !important;
-  box-shadow: 0 2px 10px rgba(37, 99, 235, 0.05) !important;
+  background: #ffffff !important;
+  border: 1px solid rgba(226, 232, 240, 0.95) !important;
+  border-radius: 1rem !important;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04) !important;
 }
-
 #api-error {
-  background: rgba(254, 242, 242, 0.95) !important;
-  border: 1px solid rgba(254, 202, 202, 0.9) !important;
-  box-shadow: 0 2px 10px rgba(220, 38, 38, 0.05) !important;
+  background: #fef2f2 !important;
+  border: 1px solid #fecaca !important;
+  border-radius: 0.75rem !important;
 }
-
 #toast-banner {
-  background: rgba(255, 255, 255, 0.96) !important;
-  border: 1px solid rgba(191, 219, 254, 0.95) !important;
-  box-shadow: 0 10px 30px rgba(37, 99, 235, 0.12) !important;
+  background: #ffffff !important;
+  border: 1px solid rgba(226, 232, 240, 0.95) !important;
   color: #0f172a !important;
 }
+#confirmation-banner { background: #f0fdf4 !important; border: 1px solid #bbf7d0 !important; }
+#detail-bars { background: #f8fafc !important; border-radius: 0.75rem !important; border: 1px solid rgba(226, 232, 240, 0.9) !important; }
 
-#confirmation-banner {
-  background: rgba(240, 253, 244, 0.95) !important;
-  border: 1px solid rgba(187, 247, 208, 0.9) !important;
-}
+/* Accents */
+#reputation-progress-bar { background: linear-gradient(90deg, #22c55e, #16a34a) !important; }
+[class*="bg-primary/"] { background: rgba(22, 163, 74, 0.10) !important; border: 1px solid rgba(22, 163, 74, 0.18) !important; }
+[class*="bg-tertiary/"] { background: rgba(217, 119, 6, 0.10) !important; border: 1px solid rgba(217, 119, 6, 0.18) !important; }
+[class*="bg-error/"] { background: rgba(220, 38, 38, 0.10) !important; border: 1px solid rgba(220, 38, 38, 0.18) !important; }
+[class*="bg-secondary-container/"] { background: rgba(37, 99, 235, 0.10) !important; }
+.text-primary { color: #16a34a !important; font-weight: 600; }
+.text-secondary { color: #2563eb !important; font-weight: 600; }
+.text-tertiary { color: #d97706 !important; font-weight: 600; }
+.text-error { color: #dc2626 !important; font-weight: 600; }
 
-#detail-bars {
-  background: #f8fafc !important;
-  border-radius: 12px !important;
-  border: 1px solid rgba(226, 232, 240, 0.9) !important;
-}
+@keyframes glow-pulse { 0%, 100% { box-shadow: 0 0 4px rgba(22, 163, 74, 0.35); } 50% { box-shadow: 0 0 12px rgba(22, 163, 74, 0.6); } }
+.animate-pulse { animation: glow-pulse 2.2s ease-in-out infinite !important; }
 
-#view-zones > div > div:first-child {
-  background: #f8fafc !important;
-  border: 1px solid rgba(226, 232, 240, 0.9) !important;
-  box-shadow: 0 4px 20px rgba(15, 23, 42, 0.04) !important;
-}
+@keyframes skel-pulse { 0%, 100% { opacity: 0.55; } 50% { opacity: 1; } }
+.skel { background: #e2e8f0; border-radius: 0.5rem; animation: skel-pulse 1.4s ease-in-out infinite; }
 
-/* ================================================================
-   ACCENTS & PROGRESS
-   ================================================================ */
-#reputation-progress-bar {
-  background: linear-gradient(90deg, #10b981, #16a34a) !important;
-  box-shadow: 0 0 10px rgba(22, 163, 74, 0.25) !important;
-}
+button, a, input, select { transition: all .18s ease !important; }
 
-[class*="bg-primary/"] {
-  background: rgba(22, 163, 74, 0.10) !important;
-  border: 1px solid rgba(22, 163, 74, 0.20) !important;
-}
-[class*="bg-tertiary/"] {
-  background: rgba(217, 119, 6, 0.10) !important;
-  border: 1px solid rgba(217, 119, 6, 0.20) !important;
-}
-[class*="bg-error/"] {
-  background: rgba(220, 38, 38, 0.10) !important;
-  border: 1px solid rgba(220, 38, 38, 0.20) !important;
-}
-[class*="bg-secondary-container/"] {
-  background: rgba(37, 99, 235, 0.10) !important;
+/* Inline text-style buttons */
+#slider-steps button {
+  background: transparent !important;
+  border: 0 !important;
+  padding: 0 !important;
+  font: inherit !important;
+  color: inherit !important;
 }
 
-.text-primary   { color: #16a34a !important; text-shadow: none !important; font-weight: 600; }
-.text-secondary { color: #2563eb !important; text-shadow: none !important; font-weight: 600; }
-.text-tertiary  { color: #d97706 !important; text-shadow: none !important; font-weight: 600; }
-.text-error     { color: #dc2626 !important; text-shadow: none !important; font-weight: 600; }
-
-@keyframes glow-pulse {
-  0%, 100% { box-shadow: 0 0 4px rgba(22, 163, 74, 0.40); }
-  50%      { box-shadow: 0 0 12px rgba(22, 163, 74, 0.70); }
+/* Active toggle/chip hover must stay green; inactive hover = slate */
+.view-mode-btn.bg-emerald-600:hover,
+.kind-chip.bg-emerald-600:hover,
+.radius-chip.bg-emerald-600:hover {
+  background-color: #059669 !important;
+  color: #ffffff !important;
 }
-.animate-pulse {
-  animation: glow-pulse 2.2s ease-in-out infinite !important;
+.view-mode-btn:not(.bg-emerald-600):hover,
+.kind-chip:not(.bg-emerald-600):hover,
+.radius-chip:not(.bg-emerald-600):hover {
+  background-color: #f1f5f9 !important;
 }
 
-/* Global smooth transition */
-button, a, input, select {
-  transition: all .2s cubic-bezier(.34, 1.56, .64, 1) !important;
+/* Bento grid layout */
+#bento-grid { display: grid; grid-template-columns: 1fr; gap: 0.75rem; }
+@media (min-width: 768px) {
+  #bento-grid { grid-template-columns: repeat(2, 1fr); }
+  #bento-best { grid-column: span 2; }
+  #bento-alts { grid-column: span 2; }
+}
+@media (min-width: 1024px) {
+  #bento-grid { grid-template-columns: repeat(12, 1fr); }
+  #bento-best { grid-column: span 6; grid-row: span 2; }
+  #bento-chance { grid-column: span 3; }
+  #bento-distance { grid-column: span 3; }
+  #bento-price { grid-column: span 3; }
+  #bento-confidence { grid-column: span 3; }
+  #bento-alts { grid-column: span 12; }
 }
 </style>
 <script src="https://cdn.tailwindcss.com"></script>
@@ -496,38 +267,21 @@ button, a, input, select {
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 </head>
 <body class="bg-surface font-body-md text-body-md text-on-surface min-h-screen flex flex-col antialiased selection:bg-primary-container selection:text-on-primary-container">
-<!-- Ambient glow blobs -->
-<div aria-hidden="true" class="pk-blob pk-blob-1"></div>
-<div aria-hidden="true" class="pk-blob pk-blob-2"></div>
-<div aria-hidden="true" class="pk-blob pk-blob-3"></div>
-<div aria-hidden="true" class="pk-blob pk-blob-4"></div>
-<div aria-hidden="true" class="pk-blob pk-blob-5"></div>
-<div aria-hidden="true" class="pk-blob pk-blob-6"></div>
-<!-- Optical glass distortion filter definition -->
-<svg aria-hidden="true" style="position:absolute;width:0;height:0;overflow:hidden;pointer-events:none;">
-  <defs>
-    <filter id="glass-edge-distort" x="-10%" y="-10%" width="120%" height="120%">
-      <feTurbulence type="fractalNoise" baseFrequency="0.04 0.04" numOctaves="2" result="noise" />
-      <feDisplacementMap in="SourceGraphic" in2="noise" scale="3" xChannelSelector="R" yChannelSelector="G" />
-    </filter>
-  </defs>
-</svg>
-<header class="sticky top-0 w-full z-50 pt-safe bg-white/85 backdrop-blur-xl shadow-sm border-b border-slate-200/80">
-<div class="max-w-4xl mx-auto w-full px-space-md flex flex-col justify-center gap-space-xs py-2">
+<header class="sticky top-0 w-full z-50 pt-safe bg-white/92 backdrop-blur-md shadow-sm border-b border-slate-200/80">
+<div class="max-w-5xl mx-auto w-full px-space-md flex flex-col justify-center gap-space-xs py-2.5">
 <div class="flex items-center justify-between gap-space-sm">
 <div class="flex items-center gap-space-sm min-w-0">
-<div class="h-8 w-8 rounded-lg bg-primary-container flex items-center justify-center shrink-0">
+<div class="h-9 w-9 rounded-xl bg-primary-container flex items-center justify-center shrink-0">
 <span class="font-extrabold text-on-primary-container text-[18px]">P</span>
 </div>
 <div class="flex flex-col min-w-0">
 <div class="flex items-center gap-space-xs">
-<span class="font-headline-md text-headline-md font-bold tracking-tight text-on-surface truncate">Parkistics</span>
+<h1 class="font-headline-md text-headline-md font-bold tracking-tight text-on-surface truncate">Parkistics</h1>
 <span class="font-label-sm text-label-sm text-on-surface-variant truncate hidden sm:inline-block" id="view-label"></span>
 </div>
-<span class="font-label-sm text-label-sm text-on-surface-variant truncate hidden xs:block">Where &amp; when you're most likely to find a spot</span>
+<span class="font-body-sm text-body-sm text-on-surface-variant truncate hidden sm:block">Where &amp; when you're most likely to find a spot</span>
 </div>
 </div>
-<!-- Optimization & Availability Badges -->
 <div class="flex items-center gap-1.5 shrink-0">
   <div id="engine-status-badge" class="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 text-[11px] font-bold shadow-xs">
     <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" id="engine-dot"></span>
@@ -548,32 +302,35 @@ button, a, input, select {
 </header>
 
 <!-- ============ VIEW: FORECAST ============ -->
-<main class="flex flex-col relative w-full max-w-4xl mx-auto pt-4 pb-12 px-space-md min-h-screen" id="view-forecast">
+<main class="flex flex-col relative w-full max-w-5xl mx-auto pt-4 pb-12 px-space-md min-h-screen" id="view-forecast">
 <div class="flex flex-col w-full relative pb-6 gap-space-md">
+
+<!-- API Error State -->
 <div class="hidden items-center justify-between px-space-md py-space-sm rounded-xl bg-error/15 gap-space-sm" data-testid="api-error" id="api-error">
 <span class="font-body-sm text-body-sm text-error" id="api-error-text">Backend unreachable.</span>
 <button class="px-3 py-1.5 rounded-lg bg-error/20 text-error font-label-sm text-label-sm font-bold shrink-0" id="api-retry" type="button">Retry</button>
 </div>
 
-<!-- Destination Search & Search Radius Panel -->
-<section class="glass-panel p-space-md rounded-2xl flex flex-col gap-space-sm" id="destination-search-panel">
+<!-- Destination Search + Controls Panel -->
+<section aria-label="Search and filters" class="bg-surface-container p-space-md flex flex-col gap-space-sm" id="destination-search-panel">
   <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
     <div class="relative flex-1 flex items-center">
-      <span class="material-symbols-outlined absolute left-3.5 text-slate-400 text-[20px] pointer-events-none">search</span>
+      <span class="material-symbols-outlined absolute left-3.5 text-slate-400 text-[20px] pointer-events-none" aria-hidden="true">search</span>
+      <label class="sr-only" for="dest-search-input">Destination</label>
       <input
         type="text"
         id="dest-search-input"
         data-testid="dest-search-input"
-        placeholder="Search anywhere — Eiffel Tower, Times Square, Shibuya, Mumbai, Downtown Berkeley…"
+        placeholder="Search anywhere — Eiffel Tower, Times Square, Shibuya, Mumbai…"
         value="Downtown Berkeley"
-        class="w-full pl-11 pr-9 py-2.5 rounded-xl bg-white/90 border border-slate-200 text-slate-900 placeholder-slate-400 text-[14px] font-semibold focus:outline-none focus:ring-2 focus:ring-emerald-500 shadow-sm transition-all"
+        class="w-full pl-11 pr-9 py-2.5 rounded-xl bg-white border border-slate-200 text-slate-900 placeholder-slate-400 text-[14px] font-semibold focus:outline-none focus:ring-2 focus:ring-emerald-500 shadow-sm transition-all"
         autocomplete="off"
       />
       <button
         type="button"
         id="dest-search-clear"
         class="hidden absolute right-3 text-slate-400 hover:text-slate-600 transition-colors"
-        title="Clear"
+        title="Clear search"
       >
         <span class="material-symbols-outlined text-[18px]">close</span>
       </button>
@@ -589,42 +346,81 @@ button, a, input, select {
     </button>
   </div>
 
-  <!-- Search Radius Control (default 1.0 km) -->
-  <div class="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-200/60">
+  <!-- Radius + Arrival + Sort + Filters + View toggle -->
+  <div class="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-200/70">
     <div class="flex items-center gap-2">
-      <span class="material-symbols-outlined text-emerald-600 text-[18px]">radar</span>
-      <span class="text-[12px] font-bold text-slate-700 uppercase tracking-wider">Search Radius:</span>
+      <span class="material-symbols-outlined text-emerald-600 text-[18px]" aria-hidden="true">radar</span>
+      <span class="text-[12px] font-bold text-slate-700 uppercase tracking-wider">Radius:</span>
       <span id="radius-val-label" data-testid="radius-val-label" class="text-[12px] font-extrabold text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200">1.0 km</span>
     </div>
-
-    <!-- Quick Radius Chips -->
-    <div class="flex items-center gap-1.5 flex-wrap" id="radius-chips">
+    <div class="flex items-center gap-1.5 flex-wrap" id="radius-chips" role="group" aria-label="Search radius">
       <button type="button" data-radius="0.5" class="radius-chip px-2.5 py-1 text-[11px] font-bold rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-100 transition-all">0.5 km</button>
-      <button type="button" data-radius="1.0" class="radius-chip active px-2.5 py-1 text-[11px] font-bold rounded-lg border border-emerald-500 bg-emerald-600 text-white shadow-sm transition-all">1.0 km (default)</button>
+      <button type="button" data-radius="1.0" class="radius-chip active px-2.5 py-1 text-[11px] font-bold rounded-lg border border-emerald-500 bg-emerald-600 text-white shadow-sm transition-all">1.0 km</button>
       <button type="button" data-radius="1.5" class="radius-chip px-2.5 py-1 text-[11px] font-bold rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-100 transition-all">1.5 km</button>
       <button type="button" data-radius="2.0" class="radius-chip px-2.5 py-1 text-[11px] font-bold rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-100 transition-all">2.0 km</button>
       <button type="button" data-radius="3.0" class="radius-chip px-2.5 py-1 text-[11px] font-bold rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-100 transition-all">3.0 km</button>
     </div>
   </div>
 
+  <div class="flex flex-wrap items-center gap-2 pt-1">
+    <!-- Now / arrival selector -->
+    <button type="button" id="now-btn" data-testid="now-btn" class="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-[12px] font-bold shadow-sm cursor-pointer flex items-center gap-1" aria-label="Reset arrival to now">
+      <span class="material-symbols-outlined text-[15px]">schedule</span> Now
+    </button>
+    <span class="text-[12px] text-slate-500 font-medium">Arrival <span data-testid="time-label" id="slider-val-label" class="font-extrabold text-emerald-700">+15 min</span></span>
+
+    <!-- Sort -->
+    <label class="flex items-center gap-1.5 ml-auto text-[12px] font-bold text-slate-600" for="sort-select">
+      <span class="material-symbols-outlined text-[16px] text-slate-400" aria-hidden="true">sort</span>
+      <span class="sr-only">Sort by</span>
+      <select id="sort-select" class="rounded-lg border border-slate-200 bg-white text-[12px] font-semibold px-2 py-1.5 cursor-pointer">
+        <option value="distance">Nearest</option>
+        <option value="probability">Best chance</option>
+        <option value="walk">Walk time</option>
+        <option value="price">Cheapest</option>
+      </select>
+    </label>
+
+    <!-- Map / List toggle -->
+    <div class="flex items-center rounded-lg border border-slate-200 overflow-hidden bg-slate-50" role="group" aria-label="View mode">
+      <button type="button" id="view-mode-map" data-testid="view-mode-map" data-mode="map" class="view-mode-btn px-2.5 py-1.5 text-[11px] font-bold bg-emerald-600 text-white cursor-pointer flex items-center gap-1" aria-pressed="true">
+        <span class="material-symbols-outlined text-[14px]">map</span> Map
+      </button>
+      <button type="button" id="view-mode-list" data-testid="view-mode-list" data-mode="list" class="view-mode-btn px-2.5 py-1.5 text-[11px] font-bold text-slate-600 hover:bg-slate-100 cursor-pointer flex items-center gap-1" aria-pressed="false">
+        <span class="material-symbols-outlined text-[14px]">view_list</span> List
+      </button>
+    </div>
+  </div>
+
+  <!-- Kind filters -->
+  <div class="flex items-center gap-1.5 flex-wrap" id="kind-filters" role="group" aria-label="Filter by type">
+    <span class="text-[11px] font-bold text-slate-500 uppercase tracking-wider mr-0.5">Filter:</span>
+    <button type="button" data-kind="all" class="kind-chip active px-2.5 py-1 text-[11px] font-bold rounded-full border border-emerald-500 bg-emerald-600 text-white transition-all">All</button>
+    <button type="button" data-kind="lot" class="kind-chip px-2.5 py-1 text-[11px] font-bold rounded-full border border-slate-200 text-slate-600 hover:bg-slate-100 transition-all">Lots</button>
+    <button type="button" data-kind="garage" class="kind-chip px-2.5 py-1 text-[11px] font-bold rounded-full border border-slate-200 text-slate-600 hover:bg-slate-100 transition-all">Garages</button>
+    <button type="button" data-kind="street" class="kind-chip px-2.5 py-1 text-[11px] font-bold rounded-full border border-slate-200 text-slate-600 hover:bg-slate-100 transition-all">Street</button>
+  </div>
+
   <!-- Popular Destination Presets -->
   <div class="flex items-center gap-1.5 overflow-x-auto pb-0.5 text-[11px] text-slate-500" id="dest-presets-row">
-    <span class="shrink-0 font-medium text-slate-400">Quick Dest:</span>
+    <span class="shrink-0 font-medium text-slate-400">Quick:</span>
     <button type="button" class="dest-preset px-2 py-0.5 rounded-md bg-slate-100 hover:bg-emerald-50 hover:text-emerald-700 text-slate-600 transition-colors shrink-0 font-medium" data-dest="Downtown Berkeley">Downtown</button>
     <button type="button" class="dest-preset px-2 py-0.5 rounded-md bg-slate-100 hover:bg-emerald-50 hover:text-emerald-700 text-slate-600 transition-colors shrink-0 font-medium" data-dest="UC Berkeley">UC Berkeley</button>
     <button type="button" class="dest-preset px-2 py-0.5 rounded-md bg-slate-100 hover:bg-emerald-50 hover:text-emerald-700 text-slate-600 transition-colors shrink-0 font-medium" data-dest="Telegraph Avenue">Telegraph</button>
-    <span class="shrink-0 text-slate-300">|</span>
-    <button type="button" class="dest-preset px-2 py-0.5 rounded-md bg-blue-50 hover:bg-blue-100 hover:text-blue-700 text-blue-600 transition-colors shrink-0 font-medium" data-dest="Eiffel Tower, Paris">🇫🇷 Eiffel Tower</button>
-    <button type="button" class="dest-preset px-2 py-0.5 rounded-md bg-blue-50 hover:bg-blue-100 hover:text-blue-700 text-blue-600 transition-colors shrink-0 font-medium" data-dest="Times Square, New York">🇺🇸 Times Square</button>
-    <button type="button" class="dest-preset px-2 py-0.5 rounded-md bg-blue-50 hover:bg-blue-100 hover:text-blue-700 text-blue-600 transition-colors shrink-0 font-medium" data-dest="Shibuya Station, Tokyo">🇯🇵 Shibuya</button>
-    <button type="button" class="dest-preset px-2 py-0.5 rounded-md bg-blue-50 hover:bg-blue-100 hover:text-blue-700 text-blue-600 transition-colors shrink-0 font-medium" data-dest="Gateway of India, Mumbai">🇮🇳 Mumbai</button>
-    <button type="button" class="dest-preset px-2 py-0.5 rounded-md bg-blue-50 hover:bg-blue-100 hover:text-blue-700 text-blue-600 transition-colors shrink-0 font-medium" data-dest="Big Ben, London">🇬🇧 London</button>
-    <button type="button" class="dest-preset px-2 py-0.5 rounded-md bg-blue-50 hover:bg-blue-100 hover:text-blue-700 text-blue-600 transition-colors shrink-0 font-medium" data-dest="Sydney Opera House">🇦🇺 Sydney</button>
+    <span class="shrink-0 text-slate-300" aria-hidden="true">|</span>
+    <button type="button" class="dest-preset px-2 py-0.5 rounded-md bg-blue-50 hover:bg-blue-100 hover:text-blue-700 text-blue-600 transition-colors shrink-0 font-medium" data-dest="Eiffel Tower, Paris">Eiffel Tower</button>
+    <button type="button" class="dest-preset px-2 py-0.5 rounded-md bg-blue-50 hover:bg-blue-100 hover:text-blue-700 text-blue-600 transition-colors shrink-0 font-medium" data-dest="Times Square, New York">Times Square</button>
+    <button type="button" class="dest-preset px-2 py-0.5 rounded-md bg-blue-50 hover:bg-blue-100 hover:text-blue-700 text-blue-600 transition-colors shrink-0 font-medium" data-dest="Shibuya Station, Tokyo">Shibuya</button>
+    <button type="button" class="dest-preset px-2 py-0.5 rounded-md bg-blue-50 hover:bg-blue-100 hover:text-blue-700 text-blue-600 transition-colors shrink-0 font-medium" data-dest="Gateway of India, Mumbai">Mumbai</button>
+    <button type="button" class="dest-preset px-2 py-0.5 rounded-md bg-blue-50 hover:bg-blue-100 hover:text-blue-700 text-blue-600 transition-colors shrink-0 font-medium" data-dest="Big Ben, London">London</button>
+    <button type="button" class="dest-preset px-2 py-0.5 rounded-md bg-blue-50 hover:bg-blue-100 hover:text-blue-700 text-blue-600 transition-colors shrink-0 font-medium" data-dest="Sydney Opera House">Sydney</button>
   </div>
 </section>
-<div class="flex items-center justify-between px-space-md py-space-sm rounded-xl bg-surface-container transition-all duration-300 shadow-md" id="location-banner">
+
+<!-- Location Banner -->
+<div aria-live="polite" class="flex items-center justify-between px-space-md py-space-sm gap-space-sm" id="location-banner">
 <div class="flex items-center gap-space-sm min-w-0">
-<div class="relative flex items-center justify-center w-3 h-3 shrink-0" id="banner-dot">
+<div class="relative flex items-center justify-center w-3 h-3 shrink-0" id="banner-dot" aria-hidden="true">
 <span class="absolute inline-flex h-full w-full rounded-full bg-secondary opacity-75 animate-ping"></span>
 <span class="relative inline-flex rounded-full h-2 w-2 bg-secondary"></span>
 </div>
@@ -634,110 +430,206 @@ button, a, input, select {
 </div>
 </div>
 </div>
-<div class="relative w-full h-[58vh] min-h-[380px] rounded-xl bg-surface-container-lowest overflow-hidden shadow-xl select-none">
+
+<!-- Map (dominant) -->
+<section aria-label="Map" class="relative w-full overflow-hidden select-none" id="map-panel" style="height:clamp(340px, 52vh, 520px);">
 <div class="absolute inset-0" data-testid="map" id="map"></div>
 <div class="absolute bottom-3 right-3 z-[500]">
-<button class="flex items-center gap-1.5 px-3 py-2 rounded-full bg-surface-container-high/95 backdrop-blur-md text-on-surface shadow-lg hover:bg-secondary-container hover:text-on-secondary-container active:scale-95 transition-all" data-testid="locate-me" id="recenter-gps-btn" type="button">
+<button class="flex items-center gap-1.5 px-3 py-2 rounded-full bg-white/95 backdrop-blur-md text-on-surface shadow-lg hover:bg-emerald-50 hover:text-emerald-700 active:scale-95 transition-all border border-slate-200" data-testid="locate-me" id="recenter-gps-btn" type="button">
 <span class="material-symbols-outlined text-secondary text-[18px]">my_location</span>
 <span class="font-label-sm text-label-sm font-bold">Use my location</span>
 </button>
 </div>
-<div class="absolute top-3 right-3 flex items-center justify-center w-7 h-7 rounded-full bg-surface-container-high/80 text-on-surface-variant backdrop-blur-sm pointer-events-none">
+<div class="absolute top-3 right-3 flex items-center justify-center w-7 h-7 rounded-full bg-white/85 text-on-surface-variant backdrop-blur-sm pointer-events-none border border-slate-200" aria-hidden="true">
 <span class="text-[10px] font-bold tracking-tight text-secondary">N</span>
 </div>
-</div>
-<div class="flex items-center gap-1 px-space-xs overflow-x-auto">
-<div class="flex items-center gap-1.5 px-space-sm py-1 rounded-full bg-surface-container text-primary shrink-0">
+</section>
+
+<!-- Legend -->
+<div aria-label="Status legend" class="flex items-center gap-1 px-space-xs overflow-x-auto" role="list">
+<div class="flex items-center gap-1.5 px-space-sm py-1 rounded-full bg-white border border-slate-200 text-primary shrink-0" role="listitem">
 <span class="w-2 h-2 rounded-full bg-primary shrink-0"></span>
 <span class="font-label-sm text-label-sm text-on-surface truncate">≥60% High</span>
 </div>
-<div class="flex items-center gap-1.5 px-space-sm py-1 rounded-full bg-surface-container text-tertiary shrink-0">
+<div class="flex items-center gap-1.5 px-space-sm py-1 rounded-full bg-white border border-slate-200 text-tertiary shrink-0" role="listitem">
 <span class="w-2 h-2 rounded-full bg-tertiary shrink-0"></span>
 <span class="font-label-sm text-label-sm text-on-surface truncate">35–59% Med</span>
 </div>
-<div class="flex items-center gap-1.5 px-space-sm py-1 rounded-full bg-surface-container text-error shrink-0">
+<div class="flex items-center gap-1.5 px-space-sm py-1 rounded-full bg-white border border-slate-200 text-error shrink-0" role="listitem">
 <span class="w-2 h-2 rounded-full bg-error shrink-0"></span>
 <span class="font-label-sm text-label-sm text-on-surface truncate">&lt;35% Low</span>
 </div>
 </div>
-<div class="flex flex-col p-space-md rounded-xl bg-surface-container shadow-md gap-space-sm">
-<div class="flex items-center justify-between">
-<div class="flex flex-col">
-<span class="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider font-semibold">Predictive Model</span>
-<div class="flex items-baseline gap-1.5">
-<span class="font-body-md text-body-md text-on-surface font-medium">Forecast horizon:</span>
-<span class="font-metric-sm text-metric-sm font-bold text-primary" data-testid="time-label" id="slider-val-label">+15 min</span>
-</div>
-</div>
-<div class="flex items-center gap-1 px-2 py-0.5 rounded-full bg-surface-container-high text-on-surface-variant text-[11px] font-mono">
-<span class="material-symbols-outlined text-[13px] text-primary">online_prediction</span>
-<span id="model-pill">Live forecast</span>
-</div>
-</div>
-<div class="flex flex-col gap-1.5 pt-1">
-<input class="w-full h-2 rounded-lg bg-surface-container-highest appearance-none cursor-pointer accent-primary" data-testid="time-slider" id="time-slider" max="180" min="0" step="15" type="range" value="15"/>
-<div class="flex justify-between font-label-sm text-label-sm text-on-surface-variant text-[10px] px-0.5" id="slider-steps">
-<span class="cursor-pointer hover:text-on-surface" data-h="0">+0m</span>
-<span class="cursor-pointer hover:text-on-surface" data-h="15">+15m</span>
-<span class="cursor-pointer hover:text-on-surface" data-h="30">+30m</span>
-<span class="cursor-pointer hover:text-on-surface" data-h="60">+60m</span>
-<span class="cursor-pointer hover:text-on-surface" data-h="120">+120m</span>
-<span class="cursor-pointer hover:text-on-surface" data-h="180">+180m</span>
-</div>
-</div>
-</div>
-<div class="flex flex-col gap-space-xs" id="nearby-zones-section">
-<div class="flex items-center justify-between px-1">
-<div class="flex items-center gap-2 min-w-0">
-<span class="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider font-bold" id="zones-count-label">Nearby Parking</span>
-<span class="text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200 shrink-0" id="zones-radius-badge">within 1.0 km</span>
-</div>
-<span class="font-label-sm text-label-sm text-secondary font-medium shrink-0">Tap to inspect</span>
-</div>
-<div class="flex gap-2 overflow-x-auto pb-1" id="zone-buttons"></div>
-<div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5 mt-1" id="nearby-cards"></div>
-</div>
-<div class="p-space-md rounded-xl bg-surface-container flex items-center justify-between gap-space-sm shadow-sm" id="reco-card">
-<div class="flex items-center gap-space-sm min-w-0">
-<div class="w-9 h-9 rounded-full bg-primary/20 text-primary flex items-center justify-center shrink-0">
-<span class="material-symbols-outlined text-[20px]">near_me</span>
-</div>
-<div class="flex flex-col min-w-0">
-<span class="font-body-md text-body-md text-on-surface font-semibold truncate" id="reco-title">Finding best zone…</span>
-<span class="font-body-sm text-body-sm text-on-surface-variant truncate" id="reco-sub">…</span>
-</div>
-</div>
-<button class="px-space-sm py-1.5 rounded-lg bg-primary text-on-primary font-label-sm text-label-sm font-bold shrink-0 hover:bg-primary-container transition-colors cursor-pointer" id="reco-route" type="button">Route</button>
-</div>
+
+<!-- Bento Panel -->
+<section aria-label="Parking insights" class="flex flex-col gap-space-md" id="bento-section">
+  <div class="flex items-center justify-between px-1">
+    <h2 class="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider font-bold">Insights</h2>
+    <span class="font-label-sm text-label-sm text-secondary font-medium shrink-0" id="bento-updated-hint">Tap a card zone to inspect</span>
+  </div>
+
+  <div id="bento-grid">
+    <!-- 1. Best nearby parking (large) -->
+    <article aria-labelledby="bento-best-title" class="bento-card p-space-md flex flex-col justify-between gap-space-sm min-h-[168px]" id="bento-best">
+      <div class="flex items-start justify-between gap-2">
+        <div class="flex flex-col min-w-0 gap-1">
+          <span class="font-label-sm text-label-sm text-emerald-700 uppercase tracking-wider font-bold flex items-center gap-1">
+            <span class="material-symbols-outlined text-[14px]" aria-hidden="true">near_me</span> Best Nearby
+          </span>
+          <h3 class="font-headline-lg text-headline-lg font-bold text-on-surface truncate" id="bento-best-name">Finding best zone…</h3>
+          <p class="font-body-sm text-body-sm text-on-surface-variant truncate" id="bento-best-meta">Analyzing nearby parking…</p>
+        </div>
+        <span class="px-2.5 py-1 rounded-full text-[12px] font-extrabold shrink-0 bg-slate-100 text-slate-500" id="bento-best-badge">—</span>
+      </div>
+      <div class="flex items-center justify-between gap-space-sm pt-space-sm border-t border-slate-200/70" id="reco-card">
+        <div class="flex flex-col min-w-0">
+          <span class="font-body-md text-body-md text-on-surface font-semibold truncate" id="reco-title">Finding best zone…</span>
+          <span class="font-body-sm text-body-sm text-on-surface-variant truncate" id="reco-sub">…</span>
+        </div>
+        <button class="px-space-sm py-1.5 rounded-lg bg-primary text-on-primary font-label-sm text-label-sm font-bold shrink-0 hover:bg-emerald-700 transition-colors cursor-pointer" id="reco-route" type="button">Route</button>
+      </div>
+    </article>
+
+    <!-- 2. Predicted availability chance -->
+    <article aria-label="Predicted availability chance" class="bento-card p-space-md flex flex-col justify-between gap-2 min-h-[120px]" id="bento-chance">
+      <div class="flex items-center gap-1.5">
+        <span class="material-symbols-outlined text-emerald-600 text-[18px]" aria-hidden="true">percent</span>
+        <h3 class="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider font-bold">Availability Chance</h3>
+      </div>
+      <div class="flex flex-col gap-1.5">
+        <span class="font-metric-lg text-metric-lg font-extrabold text-on-surface" id="bento-chance-value">—</span>
+        <span class="font-body-sm text-body-sm text-on-surface-variant" id="bento-chance-label">for best nearby zone</span>
+        <div class="h-1.5 w-full rounded-full bg-slate-100 overflow-hidden" aria-hidden="true">
+          <div class="h-full rounded-full bg-primary transition-all duration-500" id="bento-chance-bar" style="width:0%"></div>
+        </div>
+      </div>
+    </article>
+
+    <!-- 3. Distance & walk -->
+    <article aria-label="Distance and walking time" class="bento-card p-space-md flex flex-col justify-between gap-2 min-h-[120px]" id="bento-distance">
+      <div class="flex items-center gap-1.5">
+        <span class="material-symbols-outlined text-secondary text-[18px]" aria-hidden="true">directions_walk</span>
+        <h3 class="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider font-bold">Distance &amp; Walk</h3>
+      </div>
+      <div class="flex flex-col gap-0.5">
+        <span class="font-metric-sm text-metric-sm font-bold text-on-surface" id="bento-distance-value">—</span>
+        <span class="font-body-sm text-body-sm text-on-surface-variant" id="bento-distance-sub">to best option</span>
+      </div>
+    </article>
+
+    <!-- 4. Estimated price -->
+    <article aria-label="Estimated price" class="bento-card p-space-md flex flex-col justify-between gap-2 min-h-[120px]" id="bento-price">
+      <div class="flex items-center gap-1.5">
+        <span class="material-symbols-outlined text-tertiary text-[18px]" aria-hidden="true">payments</span>
+        <h3 class="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider font-bold">Est. Price</h3>
+      </div>
+      <div class="flex flex-col gap-0.5">
+        <span class="font-metric-sm text-metric-sm font-bold text-on-surface" id="bento-price-value">—</span>
+        <span class="font-body-sm text-body-sm text-on-surface-variant" id="bento-price-sub">at best option</span>
+      </div>
+    </article>
+
+    <!-- 5. Confidence + last updated -->
+    <article aria-label="Prediction confidence" class="bento-card p-space-md flex flex-col justify-between gap-2 min-h-[120px]" id="bento-confidence">
+      <div class="flex items-center gap-1.5">
+        <span class="material-symbols-outlined text-emerald-600 text-[18px]" aria-hidden="true">verified</span>
+        <h3 class="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider font-bold">Confidence</h3>
+      </div>
+      <div class="flex flex-col gap-0.5">
+        <span class="font-metric-sm text-metric-sm font-bold text-on-surface" id="bento-conf-value">—</span>
+        <span class="font-body-sm text-body-sm text-on-surface-variant">Updated <span id="bento-updated-value">just now</span></span>
+      </div>
+    </article>
+
+    <!-- 6. Nearby alternatives -->
+    <article aria-label="Nearby alternatives" class="bento-card p-space-md flex flex-col gap-space-sm" id="bento-alts">
+      <div class="flex items-center justify-between gap-2">
+        <div class="flex items-center gap-1.5">
+          <span class="material-symbols-outlined text-slate-500 text-[18px]" aria-hidden="true">nearby_off</span>
+          <h3 class="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider font-bold">Nearby Alternatives</h3>
+        </div>
+        <span class="font-body-sm text-body-sm text-on-surface-variant" id="bento-alts-hint">Top alternatives by chance</span>
+      </div>
+      <div class="flex flex-col gap-1.5" id="bento-alts-list">
+        <div class="skel h-10 w-full" aria-hidden="true"></div>
+        <div class="skel h-10 w-full" aria-hidden="true"></div>
+        <div class="skel h-10 w-full" aria-hidden="true"></div>
+      </div>
+    </article>
+  </div>
+</section>
+
+<!-- Forecast Horizon (arrival time slider) -->
+<section aria-label="Forecast horizon" class="bg-surface-container p-space-md flex flex-col gap-space-sm">
+  <div class="flex items-center justify-between">
+    <div class="flex flex-col">
+      <span class="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider font-semibold">Forecast Horizon</span>
+      <div class="flex items-baseline gap-1.5">
+        <span class="font-body-md text-body-md text-on-surface font-medium">Arriving in</span>
+        <span class="font-metric-sm text-metric-sm font-bold text-primary" id="model-pill-text">+15 min</span>
+      </div>
+    </div>
+    <div class="flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-100 text-on-surface-variant text-[11px] font-mono border border-slate-200">
+      <span class="material-symbols-outlined text-[13px] text-primary" aria-hidden="true">online_prediction</span>
+      <span id="model-pill">Live forecast</span>
+    </div>
+  </div>
+  <div class="flex flex-col gap-1.5 pt-1">
+    <label class="sr-only" for="time-slider">Arrival offset in minutes</label>
+    <input class="w-full h-2 rounded-lg bg-slate-200 appearance-none cursor-pointer accent-primary" data-testid="time-slider" id="time-slider" max="180" min="0" step="15" type="range" value="15"/>
+    <div class="flex justify-between font-label-sm text-label-sm text-on-surface-variant text-[10px] px-0.5" id="slider-steps">
+      <button type="button" class="cursor-pointer hover:text-on-surface" data-h="0">+0m</button>
+      <button type="button" class="cursor-pointer hover:text-on-surface" data-h="15">+15m</button>
+      <button type="button" class="cursor-pointer hover:text-on-surface" data-h="30">+30m</button>
+      <button type="button" class="cursor-pointer hover:text-on-surface" data-h="60">+60m</button>
+      <button type="button" class="cursor-pointer hover:text-on-surface" data-h="120">+120m</button>
+      <button type="button" class="cursor-pointer hover:text-on-surface" data-h="180">+180m</button>
+    </div>
+  </div>
+</section>
+
+<!-- Nearby Parking List -->
+<section aria-label="Nearby parking" class="flex flex-col gap-space-xs" id="nearby-zones-section">
+  <div class="flex items-center justify-between px-1">
+    <div class="flex items-center gap-2 min-w-0">
+      <h2 class="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider font-bold" id="zones-count-label">Nearby Parking</h2>
+      <span class="text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200 shrink-0" id="zones-radius-badge">within 1.0 km</span>
+    </div>
+    <span class="font-label-sm text-label-sm text-secondary font-medium shrink-0">Tap to inspect</span>
+  </div>
+  <div class="flex gap-2 overflow-x-auto pb-1" id="zone-buttons"></div>
+  <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5 mt-1" id="nearby-cards"></div>
+</section>
+
 </div>
 </main>
 
 <!-- ============ VIEW: ZONES ============ -->
-<main class="hidden flex-col relative w-full max-w-4xl mx-auto pt-4 pb-12 px-space-md min-h-screen" data-testid="zone-detail" id="view-zones">
+<main class="hidden flex-col relative w-full max-w-5xl mx-auto pt-4 pb-12 px-space-md min-h-screen" data-testid="zone-detail" id="view-zones" aria-label="Zone details">
 <div class="flex flex-col w-full relative pb-6 gap-space-md">
-<div class="relative w-full h-44 rounded-xl overflow-hidden bg-surface-container-lowest shadow-md">
-<div class="absolute inset-0 bg-gradient-to-b from-transparent via-surface/60 to-surface"></div>
+<div class="relative w-full h-44 rounded-2xl overflow-hidden bg-surface-container-lowest shadow-md border border-slate-200/80">
+<div class="absolute inset-0 bg-gradient-to-b from-transparent via-white/60 to-white"></div>
 <div class="absolute top-6 left-1/2 -translate-x-1/2 flex items-center justify-center pointer-events-none">
-<div class="w-16 h-16 rounded-full bg-secondary-container/20 animate-ping absolute"></div>
-<div class="w-10 h-10 rounded-full bg-surface-container-highest shadow-xl flex items-center justify-center z-10">
+<div class="w-16 h-16 rounded-full bg-emerald-100 animate-ping absolute"></div>
+<div class="w-10 h-10 rounded-full bg-white shadow-xl flex items-center justify-center z-10 border border-slate-200">
 <span class="material-symbols-outlined text-primary text-[22px]" style="font-variation-settings: 'FILL' 1;">local_parking</span>
 </div>
-<div class="absolute -bottom-6 bg-surface-container-high px-space-sm py-0.5 rounded-full shadow-md flex items-center gap-1 whitespace-nowrap">
+<div class="absolute -bottom-6 bg-white px-space-sm py-0.5 rounded-full shadow-md flex items-center gap-1 whitespace-nowrap border border-slate-200">
 <span class="w-1.5 h-1.5 rounded-full bg-primary animate-pulse"></span>
 <span class="font-label-sm text-label-sm text-on-surface" id="peek-label">Live zone</span>
 </div>
 </div>
-<button aria-label="Close detail sheet" class="absolute top-3 right-3 w-8 h-8 rounded-full bg-surface-container-high/90 text-on-surface hover:bg-surface-bright flex items-center justify-center transition-transform active:scale-90 shadow-md" data-testid="zone-detail-close" id="zone-detail-close" type="button">
+<button aria-label="Close detail sheet" class="absolute top-3 right-3 w-8 h-8 rounded-full bg-white/95 text-on-surface hover:bg-slate-100 flex items-center justify-center transition-transform active:scale-90 shadow-md border border-slate-200" data-testid="zone-detail-close" id="zone-detail-close" type="button">
 <span class="material-symbols-outlined text-[18px]">close</span>
 </button>
 </div>
-<div class="w-full bg-surface-container rounded-xl shadow-xl p-space-md flex flex-col gap-space-md relative -mt-8">
-<div class="w-10 h-1 rounded-full bg-surface-variant self-center -mt-1 mb-1"></div>
+<div class="w-full bg-surface-container rounded-2xl shadow-xl p-space-md flex flex-col gap-space-md relative -mt-8">
+<div class="w-10 h-1 rounded-full bg-slate-200 self-center -mt-1 mb-1" aria-hidden="true"></div>
 <div class="flex items-start justify-between gap-space-sm">
 <div class="flex flex-col min-w-0">
 <div class="flex items-center gap-space-xs flex-wrap">
 <h2 class="font-headline-md text-headline-md text-on-surface font-bold tracking-tight" id="detail-name">Zone</h2>
-<span class="px-space-xs py-0.5 rounded-full bg-surface-container-high text-primary font-label-sm text-label-sm flex items-center gap-1">
+<span class="px-space-xs py-0.5 rounded-full bg-slate-100 text-primary font-label-sm text-label-sm flex items-center gap-1 border border-slate-200">
 <span class="material-symbols-outlined text-[13px]">bolt</span> Live
 </span>
 </div>
@@ -756,24 +648,24 @@ button, a, input, select {
 </div>
 </div>
 <div class="grid grid-cols-3 gap-space-xs">
-<div class="bg-surface-container-high p-space-sm rounded-lg flex flex-col items-center text-center justify-center">
+<div class="bg-slate-50 border border-slate-200/80 p-space-sm rounded-xl flex flex-col items-center text-center justify-center">
 <span class="material-symbols-outlined text-secondary text-[20px] mb-0.5">local_parking</span>
 <span class="font-label-sm text-label-sm text-on-surface-variant">Type</span>
 <span class="font-label-md text-label-md text-on-surface truncate w-full" id="detail-type">—</span>
 </div>
-<div class="bg-surface-container-high p-space-sm rounded-lg flex flex-col items-center text-center justify-center">
+<div class="bg-slate-50 border border-slate-200/80 p-space-sm rounded-xl flex flex-col items-center text-center justify-center">
 <span class="material-symbols-outlined text-tertiary text-[20px] mb-0.5">warehouse</span>
 <span class="font-label-sm text-label-sm text-on-surface-variant">Capacity</span>
 <span class="font-label-md text-label-md text-on-surface truncate w-full" id="detail-capacity">—</span>
 </div>
-<div class="bg-surface-container-high p-space-sm rounded-lg flex flex-col items-center text-center justify-center">
+<div class="bg-slate-50 border border-slate-200/80 p-space-sm rounded-xl flex flex-col items-center text-center justify-center">
 <span class="material-symbols-outlined text-primary text-[20px] mb-0.5">directions_walk</span>
 <span class="font-label-sm text-label-sm text-on-surface-variant">Distance</span>
 <span class="font-label-md text-label-md text-on-surface truncate w-full" id="detail-walk">—</span>
 </div>
 </div>
-<div class="bg-surface-container-low p-space-sm rounded-lg flex items-start gap-space-sm shadow-sm">
-<div class="w-7 h-7 rounded-full bg-tertiary-container/20 text-tertiary flex items-center justify-center shrink-0 mt-0.5">
+<div class="bg-amber-50/70 border border-amber-200/70 p-space-sm rounded-xl flex items-start gap-space-sm">
+<div class="w-7 h-7 rounded-full bg-amber-100 text-tertiary flex items-center justify-center shrink-0 mt-0.5">
 <span class="material-symbols-outlined text-[16px]">warning</span>
 </div>
 <div class="flex flex-col min-w-0">
@@ -781,21 +673,21 @@ button, a, input, select {
 <p class="font-body-sm text-body-sm text-on-surface" id="detail-pattern">—</p>
 </div>
 </div>
-<div class="bg-surface-container-low rounded-xl p-space-md flex flex-col gap-space-sm">
+<div class="bg-slate-50 border border-slate-200/80 rounded-xl p-space-md flex flex-col gap-space-sm">
 <div class="flex items-center gap-space-xs min-w-0">
 <span class="material-symbols-outlined text-secondary text-[20px]">query_stats</span>
 <span class="font-label-lg text-label-lg text-on-surface font-semibold truncate">Find-a-Spot Probability</span>
 </div>
 <div class="flex flex-col pt-space-xs" id="live-chart-view">
 <div class="relative h-44 w-full flex items-end justify-between px-space-xs pb-6 pt-6" id="detail-bars">
-<div class="absolute inset-x-0 top-6 h-px bg-surface-variant/30 flex items-center justify-end pr-1">
-<span class="font-label-sm text-[10px] text-on-surface-variant/60">80%</span>
+<div class="absolute inset-x-0 top-6 h-px bg-slate-200 flex items-center justify-end pr-1">
+<span class="font-label-sm text-[10px] text-slate-400">80%</span>
 </div>
-<div class="absolute inset-x-0 top-16 h-px bg-surface-variant/30 flex items-center justify-end pr-1">
-<span class="font-label-sm text-[10px] text-on-surface-variant/60">50%</span>
+<div class="absolute inset-x-0 top-16 h-px bg-slate-200 flex items-center justify-end pr-1">
+<span class="font-label-sm text-[10px] text-slate-400">50%</span>
 </div>
-<div class="absolute inset-x-0 top-28 h-px bg-surface-variant/30 flex items-center justify-end pr-1">
-<span class="font-label-sm text-[10px] text-on-surface-variant/60">20%</span>
+<div class="absolute inset-x-0 top-28 h-px bg-slate-200 flex items-center justify-end pr-1">
+<span class="font-label-sm text-[10px] text-slate-400">20%</span>
 </div>
 </div>
 <div class="flex items-center justify-between pt-2 px-1">
@@ -808,7 +700,7 @@ button, a, input, select {
 <span>35-59% Med</span>
 </div>
 <div class="flex items-center gap-space-xs font-label-sm text-label-sm text-on-surface-variant">
-<span class="w-2 h-2 rounded-full bg-primary-container"></span>
+<span class="w-2 h-2 rounded-full bg-primary"></span>
 <span>≥60% High</span>
 </div>
 </div>
@@ -821,23 +713,23 @@ Fetching live forecast…
 </span>
 </div>
 <div class="h-44 w-full flex items-end justify-between px-space-xs pb-6 pt-6">
-<div class="flex flex-col items-center flex-1 h-full justify-end"><div class="w-6 h-20 rounded-t-md bg-surface-variant animate-pulse"></div></div>
-<div class="flex flex-col items-center flex-1 h-full justify-end"><div class="w-6 h-28 rounded-t-md bg-surface-variant animate-pulse"></div></div>
-<div class="flex flex-col items-center flex-1 h-full justify-end"><div class="w-6 h-36 rounded-t-md bg-surface-variant animate-pulse"></div></div>
+<div class="flex flex-col items-center flex-1 h-full justify-end"><div class="w-6 h-20 rounded-t-md bg-slate-200 animate-pulse"></div></div>
+<div class="flex flex-col items-center flex-1 h-full justify-end"><div class="w-6 h-28 rounded-t-md bg-slate-200 animate-pulse"></div></div>
+<div class="flex flex-col items-center flex-1 h-full justify-end"><div class="w-6 h-36 rounded-t-md bg-slate-200 animate-pulse"></div></div>
 </div>
 </div>
 </div>
 <div class="flex flex-col gap-space-sm pt-space-xs">
-<a class="w-full h-12 rounded-xl bg-primary-container text-on-primary-container font-headline-md text-[16px] font-bold flex items-center justify-center gap-space-sm shadow-lg hover:brightness-110 active:scale-[0.98] transition-all" id="detail-navigate" href="#" target="_blank" rel="noopener">
+<a class="w-full h-12 rounded-xl bg-primary-container text-on-primary-container font-headline-md text-[16px] font-bold flex items-center justify-center gap-space-sm shadow-sm hover:brightness-110 active:scale-[0.98] transition-all" id="detail-navigate" href="#" target="_blank" rel="noopener">
 <span class="material-symbols-outlined text-[22px]">turn_right</span>
 <span id="detail-navigate-text">Navigate</span>
 </a>
-<button class="w-full h-12 rounded-xl bg-surface-container-high text-on-surface font-label-lg text-label-lg flex items-center justify-center gap-space-sm hover:bg-surface-bright active:scale-[0.98] transition-all" id="alert-btn" type="button">
+<button class="w-full h-12 rounded-xl bg-slate-100 text-on-surface font-label-lg text-label-lg flex items-center justify-center gap-space-sm hover:bg-slate-200 active:scale-[0.98] transition-all border border-slate-200" id="alert-btn" type="button">
 <span class="material-symbols-outlined text-secondary text-[20px]">notification_add</span>
 <span id="alert-text">Set arrival alert</span>
 </button>
 </div>
-<div class="hidden w-full p-space-sm rounded-lg bg-secondary-container text-on-secondary-container font-body-sm text-body-sm items-center justify-between" id="toast-banner">
+<div class="hidden w-full p-space-sm rounded-lg bg-secondary-container text-on-secondary-container font-body-sm text-body-sm items-center justify-between" id="toast-banner" role="status">
 <div class="flex items-center gap-space-xs">
 <span class="material-symbols-outlined text-[18px]">check_circle</span>
 <span id="toast-text">Alert set.</span>

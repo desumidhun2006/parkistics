@@ -1,7 +1,7 @@
 // Parkistics Service Worker v4 — Reliable PWA Cache
 // Caches core static assets and APIs safely without interfering with map tiles or CORS.
 
-const CACHE_NAME = 'parkistics-static-v5';
+const CACHE_NAME = 'parkistics-static-v6';
 
 const PRECACHE_ASSETS = [
   '/',
